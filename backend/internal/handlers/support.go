@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 
 type SupportHandler struct {
 	collection *mongo.Collection
+	webhookURL string
 }
 
 type ticketRequest struct {
@@ -23,8 +25,11 @@ type ticketRequest struct {
 	Message  string `json:"message"`
 }
 
-func NewSupportHandler(db *mongo.Database) *SupportHandler {
-	return &SupportHandler{collection: db.Collection("tickets")}
+func NewSupportHandler(db *mongo.Database, webhookURL string) *SupportHandler {
+	return &SupportHandler{
+		collection: db.Collection("tickets"),
+		webhookURL: webhookURL,
+	}
 }
 
 func (h *SupportHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -67,5 +72,39 @@ func (h *SupportHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.sendDiscordWebhook(payload)
 	writeJSON(w, http.StatusCreated, map[string]string{"status": "ok"})
+}
+
+func (h *SupportHandler) sendDiscordWebhook(payload ticketRequest) {
+	if h.webhookURL == "" {
+		return
+	}
+
+	embed := map[string]any{
+		"title": payload.Subject,
+		"fields": []map[string]string{
+			{"name": "Имя", "value": payload.Name},
+			{"name": "Email", "value": payload.Email},
+			{"name": "Категория", "value": payload.Category},
+			{"name": "Сообщение", "value": payload.Message},
+		},
+	}
+
+	body := map[string]any{
+		"content": "Новый тикет поддержки",
+		"embeds":  []any{embed},
+	}
+
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return
+	}
+
+	req, err := http.NewRequest(http.MethodPost, h.webhookURL, bytes.NewReader(raw))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	_, _ = http.DefaultClient.Do(req)
 }

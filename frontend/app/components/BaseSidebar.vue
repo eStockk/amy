@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div>
     <div v-if="isOpen" class="overlay" @click="close"></div>
     <aside class="sidebar" :class="{ open: isOpen }">
@@ -39,12 +39,19 @@
           <span class="label">Документация</span>
         </NuxtLink>
       </nav>
-    <div class="sidebar-footer">
-      <a class="pill discord" :href="discordLoginUrl" @click="close">
-        <img :src="discordIcon" alt="Discord" />
-        <span class="label">Войти через Discord</span>
-      </a>
-    </div>
+      <div class="sidebar-footer">
+        <NuxtLink v-if="authenticated" class="user-card" to="/profile" @click="close">
+          <img class="user-avatar" :src="avatarUrl" alt="avatar" />
+          <div class="user-meta">
+            <span class="user-name">{{ user?.username || 'Пользователь' }}</span>
+            <span class="user-sub">Личный кабинет</span>
+          </div>
+        </NuxtLink>
+        <a v-else class="pill discord" :href="loginUrl" @click="close">
+          <img :src="discordIcon" alt="Discord" />
+          <span class="label">Войти через Discord</span>
+        </a>
+      </div>
       <div class="edge"></div>
     </aside>
   </div>
@@ -53,11 +60,13 @@
 <script setup lang="ts">
 import logo from '~/assets/amy-logo.png'
 import discordIcon from '~/assets/discord.png'
+import { useAuth } from '~/composables/useAuth'
 
 const isOpen = ref(false)
-const config = useRuntimeConfig()
-const discordLoginUrl = computed(() => `${config.public.apiBase}/api/auth/discord/start`)
 const route = useRoute()
+const { authenticated, user, loginUrl } = useAuth()
+
+const avatarUrl = computed(() => user.value?.avatarUrl || logo)
 
 const toggle = () => {
   isOpen.value = !isOpen.value
@@ -218,6 +227,43 @@ watch(
 .sidebar-footer {
   display: grid;
   gap: 10px;
+}
+
+.user-card {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid var(--stroke);
+  background: var(--panel);
+  text-decoration: none;
+  color: var(--text);
+}
+
+.user-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.user-meta {
+  display: grid;
+  gap: 2px;
+}
+
+.user-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.user-sub {
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .pill {

@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <header class="topbar">
     <div class="search">
       <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -7,23 +7,19 @@
           fill="currentColor"
         />
       </svg>
-      <input type="text" placeholder="Поиск статьи..." />
+      <input type="text" placeholder="????? ??????..." />
     </div>
     <div class="actions">
-      <a class="discord" :href="discordLoginUrl">
-        <img :src="discordIcon" alt="Discord" />
-        Войти через Discord
-      </a>
-      <NuxtLink class="primary" to="/support">Поддержка</NuxtLink>
+      <button class="primary" type="button" @click="supportOpen = true">?????????</button>
     </div>
+    <SupportModal :open="supportOpen" @close="supportOpen = false" />
   </header>
 </template>
 
 <script setup lang="ts">
-import discordIcon from '~/assets/discord.png'
+import SupportModal from '~/components/SupportModal.vue'
 
-const config = useRuntimeConfig()
-const discordLoginUrl = computed(() => `${config.public.apiBase}/api/auth/discord/start`)
+const supportOpen = ref(false)
 </script>
 
 <style scoped>
@@ -68,8 +64,7 @@ const discordLoginUrl = computed(() => `${config.public.apiBase}/api/auth/discor
   flex-wrap: wrap;
 }
 
-.primary,
-.discord {
+.primary {
   border-radius: 999px;
   padding: 10px 18px;
   border: 1px solid transparent;
@@ -79,23 +74,9 @@ const discordLoginUrl = computed(() => `${config.public.apiBase}/api/auth/discor
   display: inline-flex;
   align-items: center;
   gap: 8px;
-}
-
-.primary {
   color: #0b0b0f;
   background-image: linear-gradient(135deg, var(--accent), var(--accent-2));
   box-shadow: 0 10px 22px rgba(240, 90, 60, 0.35);
-}
-
-.discord {
-  background: rgba(88, 101, 242, 0.16);
-  border-color: rgba(88, 101, 242, 0.4);
-  color: #dfe2ff;
-}
-
-.discord img {
-  width: 18px;
-  height: 18px;
 }
 
 @media (max-width: 1024px) {

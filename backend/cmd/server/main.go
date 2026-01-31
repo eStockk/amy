@@ -36,7 +36,7 @@ func main() {
 	playerHandler := handlers.NewPlayerHandler(database)
 	newsHandler := handlers.NewNewsHandler(database)
 	authHandler := handlers.NewAuthHandler(database)
-	supportHandler := handlers.NewSupportHandler(database)
+	supportHandler := handlers.NewSupportHandler(database, cfg.DiscordTicketWebhook)
 	discordHandler := handlers.NewDiscordAuthHandler(
 		database,
 		cfg.DiscordClientID,
@@ -54,11 +54,12 @@ func main() {
 	mux.HandleFunc("/api/auth/login", authHandler.Login)
 	mux.HandleFunc("/api/auth/discord/start", discordHandler.Start)
 	mux.HandleFunc("/api/auth/discord/callback", discordHandler.Callback)
+	mux.HandleFunc("/api/auth/me", discordHandler.Me)
 	mux.HandleFunc("/api/support/tickets", supportHandler.Create)
 
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           withCORS(withLogging(mux)),
+		Handler:           withCORS(cfg.FrontendURL, withLogging(mux)),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -86,9 +87,17 @@ func withLogging(next http.Handler) http.Handler {
 	})
 }
 
-func withCORS(next http.Handler) http.Handler {
+func withCORS(allowedOrigin string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		if allowedOrigin == "" {
+			allowedOrigin = "*"
+		}
+		if r.Header.Get("Origin") == allowedOrigin {
+			w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
+		} else {
+			w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
+		}
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		if r.Method == http.MethodOptions {

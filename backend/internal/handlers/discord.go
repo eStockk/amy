@@ -34,6 +34,26 @@ type discordUser struct {
 	Avatar   string `json:"avatar"`
 }
 
+type discordUserDoc struct {
+	DiscordID string `bson:"discordId" json:"id"`
+	Username  string `bson:"username" json:"username"`
+	Email     string `bson:"email" json:"email"`
+	Avatar    string `bson:"avatar" json:"avatar"`
+}
+
+type discordMeResponse struct {
+	Authenticated bool            `json:"authenticated"`
+	User          *discordUserOut `json:"user,omitempty"`
+}
+
+type discordUserOut struct {
+	ID        string `json:"id"`
+	Username  string `json:"username"`
+	Email     string `json:"email"`
+	Avatar    string `json:"avatar"`
+	AvatarURL string `json:"avatarUrl"`
+}
+
 func NewDiscordAuthHandler(db *mongo.Database, clientID, clientSecret, redirectURL, frontendURL string) *DiscordAuthHandler {
 	return &DiscordAuthHandler{
 		clientID:     clientID,
@@ -148,4 +168,37 @@ func (h *DiscordAuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, redirectTo, http.StatusFound)
+}
+
+func (h *DiscordAuthHandler) Me(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie("discord_id")
+	if err != nil || cookie.Value == "" {
+		writeJSON(w, http.StatusOK, discordMeResponse{Authenticated: false})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	var user discordUserDoc
+	if err := h.collection.FindOne(ctx, bson.M{"discordId": cookie.Value}).Decode(&user); err != nil {
+		writeJSON(w, http.StatusOK, discordMeResponse{Authenticated: false})
+		return
+	}
+
+	avatarURL := ""
+	if user.Avatar != "" {
+		avatarURL = "https://cdn.discordapp.com/avatars/" + user.DiscordID + "/" + user.Avatar + ".png?size=128"
+	}
+
+	writeJSON(w, http.StatusOK, discordMeResponse{
+		Authenticated: true,
+		User: &discordUserOut{
+			ID:        user.DiscordID,
+			Username:  user.Username,
+			Email:     user.Email,
+			Avatar:    user.Avatar,
+			AvatarURL: avatarURL,
+		},
+	})
 }
