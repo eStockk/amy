@@ -84,15 +84,15 @@ func (h *SupportHandler) sendDiscordWebhook(payload ticketRequest) {
 	embed := map[string]any{
 		"title": payload.Subject,
 		"fields": []map[string]string{
-			{"name": "Имя", "value": payload.Name},
+			{"name": "???", "value": payload.Name},
 			{"name": "Email", "value": payload.Email},
-			{"name": "Категория", "value": payload.Category},
-			{"name": "Сообщение", "value": payload.Message},
+			{"name": "?????????", "value": payload.Category},
+			{"name": "?????????", "value": payload.Message},
 		},
 	}
 
 	body := map[string]any{
-		"content": "Новый тикет поддержки",
+		"content": "????? ????? ?????????",
 		"embeds":  []any{embed},
 	}
 

@@ -3,7 +3,7 @@
     <div v-if="isOpen" class="overlay" @click="close"></div>
     <aside class="sidebar" :class="{ open: isOpen }">
       <div class="logo">
-        <button class="toggle" type="button" @click="toggle" aria-label="Открыть меню">☰</button>
+        <button class="toggle" type="button" @click="toggle" aria-label="??????? ????">?</button>
         <span class="logo-mark">
           <img :src="logo" alt="Amy logo" />
         </span>
@@ -11,45 +11,45 @@
       </div>
       <nav class="nav">
         <NuxtLink class="nav-link" to="/" @click="close">
-          <span class="icon">⌂</span>
-          <span class="label">Главная</span>
+          <span class="icon">?</span>
+          <span class="label">???????</span>
         </NuxtLink>
         <NuxtLink class="nav-link" to="/news" @click="close">
-          <span class="icon">✦</span>
-          <span class="label">Новости</span>
+          <span class="icon">?</span>
+          <span class="label">???????</span>
         </NuxtLink>
         <NuxtLink class="nav-link" to="/rules" @click="close">
-          <span class="icon">◆</span>
-          <span class="label">Правила</span>
+          <span class="icon">?</span>
+          <span class="label">???????</span>
         </NuxtLink>
         <NuxtLink class="nav-link" to="/shop" @click="close">
-          <span class="icon">☰</span>
-          <span class="label">Магазин</span>
+          <span class="icon">?</span>
+          <span class="label">???????</span>
         </NuxtLink>
         <NuxtLink class="nav-link" to="/faq" @click="close">
           <span class="icon">?</span>
           <span class="label">F.A.Q</span>
         </NuxtLink>
         <NuxtLink class="nav-link" to="/map" @click="close">
-          <span class="icon">◎</span>
-          <span class="label">Карта</span>
+          <span class="icon">?</span>
+          <span class="label">?????</span>
         </NuxtLink>
         <NuxtLink class="nav-link" to="/docs" @click="close">
-          <span class="icon">⬚</span>
-          <span class="label">Документация</span>
+          <span class="icon">?</span>
+          <span class="label">????????????</span>
         </NuxtLink>
       </nav>
       <div class="sidebar-footer">
         <NuxtLink v-if="authenticated" class="user-card" to="/profile" @click="close">
           <img class="user-avatar" :src="avatarUrl" alt="avatar" />
           <div class="user-meta">
-            <span class="user-name">{{ user?.username || 'Пользователь' }}</span>
-            <span class="user-sub">Личный кабинет</span>
+            <span class="user-name">{{ user?.username || '????????????' }}</span>
+            <span class="user-sub">?????? ???????</span>
           </div>
         </NuxtLink>
         <a v-else class="pill discord" :href="loginUrl" @click="close">
           <img :src="discordIcon" alt="Discord" />
-          <span class="label">Войти через Discord</span>
+          <span class="label">????? ????? Discord</span>
         </a>
       </div>
       <div class="edge"></div>
