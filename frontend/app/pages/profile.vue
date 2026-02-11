@@ -1,17 +1,17 @@
-<template>
+﻿<template>
   <div class="profile">
     <div class="card">
       <div v-if="authenticated" class="header">
         <img class="avatar" :src="avatarUrl" alt="avatar" />
         <div>
           <h1>{{ user?.username }}</h1>
-          <p>{{ user?.email || 'Email ?? ??????' }}</p>
+          <p>{{ user?.email || 'Email не указан' }}</p>
         </div>
       </div>
       <div v-else class="empty">
-        <h1>?? ?? ????????????</h1>
-        <p>??????? ????? Discord, ????? ??????? ???? ???????.</p>
-        <a class="primary" :href="loginUrl">????? ????? Discord</a>
+        <h1>Вы не авторизованы</h1>
+        <p>Войдите через Discord, чтобы увидеть свой профиль.</p>
+        <a class="primary" :href="loginUrl">Войти через Discord</a>
       </div>
       <div v-if="authenticated" class="details">
         <div class="detail">
@@ -19,7 +19,7 @@
           <span>{{ user?.id }}</span>
         </div>
         <div class="detail">
-          <span class="label">???????</span>
+          <span class="label">Никнейм</span>
           <span>{{ user?.username }}</span>
         </div>
       </div>

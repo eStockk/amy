@@ -1,14 +1,14 @@
-<template>
+﻿<template>
   <Teleport to="body">
     <div v-if="open" class="modal" @keydown.esc="emit('close')" tabindex="-1">
       <div class="backdrop" @click="emit('close')"></div>
       <div class="panel" role="dialog" aria-modal="true">
-        <button class="close" type="button" @click="emit('close')">?</button>
-        <h2>?????????</h2>
-        <p>???????? ????? ? ?? ??????? ? ????????? ?????.</p>
+        <button class="close" type="button" @click="emit('close')">x</button>
+        <h2>Поддержка</h2>
+        <p>Оставьте тикет и мы ответим в ближайшее время.</p>
         <form @submit.prevent="submit">
           <label>
-            ??? *
+            Имя *
             <input v-model="name" type="text" required />
           </label>
           <label>
@@ -16,23 +16,23 @@
             <input v-model="email" type="email" required />
           </label>
           <label>
-            ???? *
+            Тема *
             <input v-model="subject" type="text" required />
           </label>
           <label>
-            ?????????
+            Категория
             <select v-model="category">
-              <option>????? ???????</option>
-              <option>??????????? ????????</option>
-              <option>??????</option>
-              <option>??????</option>
+              <option>Общие вопросы</option>
+              <option>Техническая проблема</option>
+              <option>Оплата</option>
+              <option>Другое</option>
             </select>
           </label>
           <label>
-            ????????? *
+            Сообщение *
             <textarea v-model="message" rows="4" required></textarea>
           </label>
-          <button type="submit" class="primary" :disabled="sending">????????? ?????</button>
+          <button type="submit" class="primary" :disabled="sending">Отправить тикет</button>
           <p v-if="status" class="status">{{ status }}</p>
         </form>
       </div>
@@ -47,7 +47,7 @@ const emit = defineEmits<{ (e: 'close'): void }>()
 const name = ref('')
 const email = ref('')
 const subject = ref('')
-const category = ref('????? ???????')
+const category = ref('Общие вопросы')
 const message = ref('')
 const status = ref('')
 const sending = ref(false)
@@ -67,13 +67,13 @@ const submit = async () => {
         message: message.value
       }
     })
-    status.value = '????? ?????????. ?? ???????? ? ????.'
+    status.value = 'Тикет отправлен. Мы свяжемся с вами.'
     name.value = ''
     email.value = ''
     subject.value = ''
     message.value = ''
   } catch {
-    status.value = '?? ??????? ????????? ?????. ?????????? ?????.'
+    status.value = 'Не удалось отправить тикет. Попробуйте позже.'
   } finally {
     sending.value = false
   }

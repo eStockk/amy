@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <header class="topbar">
     <div class="search">
       <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -7,10 +7,10 @@
           fill="currentColor"
         />
       </svg>
-      <input type="text" placeholder="????? ??????..." />
+      <input type="text" placeholder="Поиск статьи..." />
     </div>
     <div class="actions">
-      <button class="primary" type="button" @click="supportOpen = true">?????????</button>
+      <button class="primary" type="button" @click="supportOpen = true">Поддержка</button>
     </div>
     <SupportModal :open="supportOpen" @close="supportOpen = false" />
   </header>
@@ -91,3 +91,4 @@ const supportOpen = ref(false)
   }
 }
 </style>
+
