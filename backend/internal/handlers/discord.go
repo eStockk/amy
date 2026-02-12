@@ -168,7 +168,7 @@ func (h *DiscordAuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		options.Update().SetUpsert(true),
 	)
 
-	cookieDomain, secureCookie := resolveCookieDomain(h.frontendURL)
+	cookieDomain, secureCookie := resolveCookieOptions(h.frontendURL, r)
 	cookie := &http.Cookie{
 		Name:     "discord_id",
 		Value:    user.ID,
@@ -281,10 +281,10 @@ func (h *DiscordAuthHandler) LinkMinecraft(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-func resolveCookieDomain(frontendURL string) (string, bool) {
+func resolveCookieOptions(frontendURL string, r *http.Request) (string, bool) {
 	secure := strings.HasPrefix(strings.ToLower(frontendURL), "https://")
-	if frontendURL == "" {
-		return "", secure
+	if strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") || r.TLS != nil {
+		secure = true
 	}
 
 	parsed, err := url.Parse(frontendURL)
@@ -292,9 +292,20 @@ func resolveCookieDomain(frontendURL string) (string, bool) {
 		return "", secure
 	}
 
-	host := parsed.Hostname()
-	if host == "" || host == "localhost" || net.ParseIP(host) != nil {
+	configuredHost := parsed.Hostname()
+	requestHost := r.URL.Hostname()
+	if requestHost == "" {
+		requestHost = r.Host
+	}
+	requestHost = strings.Split(requestHost, ":")[0]
+
+	if configuredHost == "" || requestHost == "" || !strings.EqualFold(configuredHost, requestHost) {
 		return "", secure
 	}
-	return host, secure
+
+	if configuredHost == "localhost" || net.ParseIP(configuredHost) != nil {
+		return "", secure
+	}
+
+	return configuredHost, secure
 }

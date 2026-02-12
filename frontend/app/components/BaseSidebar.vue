@@ -64,11 +64,11 @@ import { useAuth } from '~/composables/useAuth'
 
 const isOpen = ref(false)
 const route = useRoute()
-const { authenticated, user, loginUrl } = useAuth()
+const { authenticated, user, loginUrl, refresh } = useAuth()
 
 const avatarUrl = computed(() => user.value?.avatarUrl || logo)
-const displayName = computed(() => user.value?.displayName || user.value?.username || 'User')
-const profileSubtitle = computed(() => (user.value?.linkedMinecraft ? `Linked: ${user.value.linkedMinecraft}` : 'Open profile'))
+const displayName = computed(() => user.value?.displayName || user.value?.username || 'Пользователь')
+const profileSubtitle = computed(() => (user.value?.linkedMinecraft ? `Привязка: ${user.value.linkedMinecraft}` : 'Личный кабинет'))
 
 const toggle = () => {
   isOpen.value = !isOpen.value
@@ -77,6 +77,10 @@ const toggle = () => {
 const close = () => {
   isOpen.value = false
 }
+
+onMounted(() => {
+  void refresh()
+})
 
 watch(
   () => route.fullPath,
