@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div>
     <div v-if="isOpen" class="overlay" @click="close"></div>
     <aside class="sidebar" :class="{ open: isOpen }">
@@ -43,8 +43,8 @@
         <NuxtLink v-if="authenticated" class="user-card" to="/profile" @click="close">
           <img class="user-avatar" :src="avatarUrl" alt="avatar" />
           <div class="user-meta">
-            <span class="user-name">{{ user?.username || 'Пользователь' }}</span>
-            <span class="user-sub">Личный кабинет</span>
+            <span class="user-name">{{ displayName }}</span>
+            <span class="user-sub">{{ profileSubtitle }}</span>
           </div>
         </NuxtLink>
         <a v-else class="pill discord" :href="loginUrl" @click="close">
@@ -67,6 +67,8 @@ const route = useRoute()
 const { authenticated, user, loginUrl } = useAuth()
 
 const avatarUrl = computed(() => user.value?.avatarUrl || logo)
+const displayName = computed(() => user.value?.displayName || user.value?.username || 'User')
+const profileSubtitle = computed(() => (user.value?.linkedMinecraft ? `Linked: ${user.value.linkedMinecraft}` : 'Open profile'))
 
 const toggle = () => {
   isOpen.value = !isOpen.value

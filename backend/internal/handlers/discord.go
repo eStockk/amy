@@ -3,8 +3,11 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/url"
+	"regexp"
+	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -28,17 +31,20 @@ type discordTokenResponse struct {
 }
 
 type discordUser struct {
-	ID       string `json:"id"`
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Avatar   string `json:"avatar"`
+	ID         string `json:"id"`
+	Username   string `json:"username"`
+	GlobalName string `json:"global_name"`
+	Email      string `json:"email"`
+	Avatar     string `json:"avatar"`
 }
 
 type discordUserDoc struct {
-	DiscordID string `bson:"discordId" json:"id"`
-	Username  string `bson:"username" json:"username"`
-	Email     string `bson:"email" json:"email"`
-	Avatar    string `bson:"avatar" json:"avatar"`
+	DiscordID       string `bson:"discordId" json:"id"`
+	Username        string `bson:"username" json:"username"`
+	GlobalName      string `bson:"globalName" json:"globalName"`
+	Email           string `bson:"email" json:"email"`
+	Avatar          string `bson:"avatar" json:"avatar"`
+	LinkedMinecraft string `bson:"linkedMinecraft,omitempty" json:"linkedMinecraft,omitempty"`
 }
 
 type discordMeResponse struct {
@@ -47,12 +53,20 @@ type discordMeResponse struct {
 }
 
 type discordUserOut struct {
-	ID        string `json:"id"`
-	Username  string `json:"username"`
-	Email     string `json:"email"`
-	Avatar    string `json:"avatar"`
-	AvatarURL string `json:"avatarUrl"`
+	ID              string `json:"id"`
+	Username        string `json:"username"`
+	DisplayName     string `json:"displayName"`
+	Email           string `json:"email"`
+	Avatar          string `json:"avatar"`
+	AvatarURL       string `json:"avatarUrl"`
+	LinkedMinecraft string `json:"linkedMinecraft,omitempty"`
 }
+
+type linkMinecraftRequest struct {
+	Nickname string `json:"nickname"`
+}
+
+var minecraftNicknameRe = regexp.MustCompile(`^[A-Za-z0-9_]{3,16}$`)
 
 func NewDiscordAuthHandler(db *mongo.Database, clientID, clientSecret, redirectURL, frontendURL string) *DiscordAuthHandler {
 	return &DiscordAuthHandler{
@@ -140,11 +154,12 @@ func (h *DiscordAuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		bson.M{"discordId": user.ID},
 		bson.M{
 			"$set": bson.M{
-				"discordId": user.ID,
-				"username":  user.Username,
-				"email":     user.Email,
-				"avatar":    user.Avatar,
-				"updatedAt": time.Now().UTC(),
+				"discordId":  user.ID,
+				"username":   user.Username,
+				"globalName": user.GlobalName,
+				"email":      user.Email,
+				"avatar":     user.Avatar,
+				"updatedAt":  time.Now().UTC(),
 			},
 			"$setOnInsert": bson.M{
 				"createdAt": time.Now().UTC(),
@@ -153,14 +168,20 @@ func (h *DiscordAuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		options.Update().SetUpsert(true),
 	)
 
-	http.SetCookie(w, &http.Cookie{
+	cookieDomain, secureCookie := resolveCookieDomain(h.frontendURL)
+	cookie := &http.Cookie{
 		Name:     "discord_id",
 		Value:    user.ID,
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
+		Secure:   secureCookie,
 		Expires:  time.Now().Add(30 * 24 * time.Hour),
-	})
+	}
+	if cookieDomain != "" {
+		cookie.Domain = cookieDomain
+	}
+	http.SetCookie(w, cookie)
 
 	redirectTo := h.frontendURL
 	if redirectTo == "" {
@@ -191,14 +212,89 @@ func (h *DiscordAuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		avatarURL = "https://cdn.discordapp.com/avatars/" + user.DiscordID + "/" + user.Avatar + ".png?size=128"
 	}
 
+	displayName := strings.TrimSpace(user.GlobalName)
+	if displayName == "" {
+		displayName = user.Username
+	}
+
 	writeJSON(w, http.StatusOK, discordMeResponse{
 		Authenticated: true,
 		User: &discordUserOut{
-			ID:        user.DiscordID,
-			Username:  user.Username,
-			Email:     user.Email,
-			Avatar:    user.Avatar,
-			AvatarURL: avatarURL,
+			ID:              user.DiscordID,
+			Username:        user.Username,
+			DisplayName:     displayName,
+			Email:           user.Email,
+			Avatar:          user.Avatar,
+			AvatarURL:       avatarURL,
+			LinkedMinecraft: user.LinkedMinecraft,
 		},
 	})
+}
+
+func (h *DiscordAuthHandler) LinkMinecraft(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	cookie, err := r.Cookie("discord_id")
+	if err != nil || cookie.Value == "" {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+
+	var payload linkMinecraftRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+
+	payload.Nickname = strings.TrimSpace(payload.Nickname)
+	if !minecraftNicknameRe.MatchString(payload.Nickname) {
+		writeError(w, http.StatusBadRequest, "nickname must be 3-16 chars and contain only latin letters, digits or _")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	result, err := h.collection.UpdateOne(
+		ctx,
+		bson.M{"discordId": cookie.Value},
+		bson.M{"$set": bson.M{
+			"linkedMinecraft": payload.Nickname,
+			"updatedAt":       time.Now().UTC(),
+		}},
+	)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to link minecraft account")
+		return
+	}
+	if result.MatchedCount == 0 {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":   "ok",
+		"nickname": payload.Nickname,
+	})
+}
+
+func resolveCookieDomain(frontendURL string) (string, bool) {
+	secure := strings.HasPrefix(strings.ToLower(frontendURL), "https://")
+	if frontendURL == "" {
+		return "", secure
+	}
+
+	parsed, err := url.Parse(frontendURL)
+	if err != nil {
+		return "", secure
+	}
+
+	host := parsed.Hostname()
+	if host == "" || host == "localhost" || net.ParseIP(host) != nil {
+		return "", secure
+	}
+	return host, secure
 }
