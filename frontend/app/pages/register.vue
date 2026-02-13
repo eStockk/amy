@@ -59,7 +59,7 @@ const config = useRuntimeConfig()
 const submit = async () => {
   message.value = ''
   try {
-    await $fetch(`${config.public.apiBase}/api/auth/register`, {
+    await $fetch(`${config.public.apiBase}/auth/register`, {
       method: 'POST',
       body: { name: name.value, email: email.value, password: password.value }
     })

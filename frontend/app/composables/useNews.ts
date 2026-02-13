@@ -10,7 +10,7 @@ export function useNews() {
   const config = useRuntimeConfig()
 
   const { data, pending, error, refresh } = useFetch<NewsItem[]>(
-    () => `${config.public.apiBase}/api/news?limit=3`,
+    () => `${config.public.apiBase}/news?limit=3`,
     {
       server: false,
       default: () => [],

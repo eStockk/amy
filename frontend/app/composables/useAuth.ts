@@ -17,7 +17,7 @@ export function useAuth() {
   const config = useRuntimeConfig()
 
   const { data, pending, error, refresh } = useFetch<AuthResponse>(
-    () => `${config.public.apiBase}/api/auth/me`,
+    () => `${config.public.apiBase}/auth/me`,
     {
       key: 'auth-me',
       server: false,
@@ -28,10 +28,10 @@ export function useAuth() {
 
   const authenticated = computed(() => Boolean(data.value?.authenticated))
   const user = computed(() => data.value?.user)
-  const loginUrl = computed(() => `${config.public.apiBase}/api/auth/discord/start`)
+  const loginUrl = computed(() => `${config.public.apiBase}/auth/discord/start`)
 
   const linkMinecraft = async (nickname: string) => {
-    await $fetch(`${config.public.apiBase}/api/auth/link-minecraft`, {
+    await $fetch(`${config.public.apiBase}/auth/link-minecraft`, {
       method: 'POST',
       credentials: 'include',
       body: { nickname }

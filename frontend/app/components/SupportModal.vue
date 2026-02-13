@@ -57,7 +57,7 @@ const submit = async () => {
   status.value = ''
   sending.value = true
   try {
-    await $fetch(`${config.public.apiBase}/api/support/tickets`, {
+    await $fetch(`${config.public.apiBase}/support/tickets`, {
       method: 'POST',
       body: {
         name: name.value,
