@@ -1,63 +1,88 @@
 <template>
-  <div class="cabinet-page">
-    <section v-if="authenticated" class="cabinet-shell">
-      <header class="hero-card">
-        <img class="avatar" :src="avatarUrl" alt="avatar" />
-        <div class="hero-meta">
-          <p class="kicker">Личный кабинет</p>
+  <div class="profile-page">
+    <section v-if="authenticated" class="crm-shell">
+      <aside class="identity-column">
+        <div class="identity-card panel">
+          <div class="avatar-wrap">
+            <img class="avatar" :src="avatarUrl" alt="avatar" />
+            <span class="online-dot" aria-hidden="true"></span>
+          </div>
+          <p class="eyebrow">ПРОФИЛЬ DISCORD</p>
           <h1>{{ displayName }}</h1>
-          <p class="muted">@{{ user?.username }}<span v-if="user?.email"> - {{ user.email }}</span></p>
-        </div>
-      </header>
-
-      <section class="cards-grid">
-        <article class="info-card">
-          <p class="card-title">Игровая привязка</p>
-          <strong class="card-value">{{ user?.linkedMinecraft || 'Не привязано' }}</strong>
-          <p class="muted">Этот ник используется для связи профиля Discord с серверным аккаунтом.</p>
-        </article>
-
-        <article class="info-card">
-          <p class="card-title">Публичная ссылка</p>
-          <a class="profile-link" :href="profilePath" target="_blank" rel="noreferrer">{{ fullProfileUrl }}</a>
-          <div class="inline-actions">
-            <button class="ghost" type="button" @click="copyProfileLink">{{ copied ? 'Скопировано' : 'Копировать' }}</button>
-            <NuxtLink class="ghost" :to="profilePath">Открыть</NuxtLink>
-          </div>
-        </article>
-      </section>
-
-      <section class="link-panel">
-        <h2>Привязка Minecraft аккаунта</h2>
-        <p class="muted">Укажите свой ник на сервере для синхронизации с профилем.</p>
-
-        <form class="link-form" @submit.prevent="submitLink">
-          <label for="nickname">Ник в Minecraft</label>
-          <div class="row">
-            <input
-              id="nickname"
-              v-model.trim="nickname"
-              type="text"
-              placeholder="Nickname (3-16, latin letters/digits/_ )"
-              minlength="3"
-              maxlength="16"
-              required
-            />
-            <button class="primary" type="submit" :disabled="submitting">
-              {{ submitting ? 'Сохраняем...' : 'Привязать ник' }}
+          <p class="muted">@{{ user?.username }}</p>
+          <p v-if="user?.email" class="muted email">{{ user.email }}</p>
+          <div class="identity-actions">
+            <button class="ghost" type="button" @click="copyProfileLink">
+              {{ copied ? 'Скопировано' : 'Копировать ссылку' }}
             </button>
+            <NuxtLink class="ghost" :to="profilePath">Публичный профиль</NuxtLink>
           </div>
-        </form>
+          <a class="profile-link" :href="profilePath" target="_blank" rel="noreferrer">{{ fullProfileUrl }}</a>
+        </div>
 
-        <p v-if="status" class="status" :class="{ error: statusType === 'error' }">{{ status }}</p>
-      </section>
+        <div class="panel mini-card">
+          <p class="mini-label">СТАТУС СВЯЗИ</p>
+          <p class="mini-value">{{ user?.linkedMinecraft ? 'Аккаунт связан' : 'Нужна привязка' }}</p>
+        </div>
+      </aside>
 
-      <footer class="cabinet-actions">
-        <button class="ghost danger" type="button" @click="handleLogout">Выйти из аккаунта</button>
-      </footer>
+      <div class="workspace-column">
+        <header class="workspace-head panel">
+          <div>
+            <p class="eyebrow">ЛИЧНЫЙ КАБИНЕТ</p>
+            <h2>Управление аккаунтом</h2>
+          </div>
+          <button class="ghost danger" type="button" @click="handleLogout">Выйти</button>
+        </header>
+
+        <section class="stats-grid">
+          <article class="panel stat-card highlight">
+            <p class="card-title">ИГРОВОЙ НИК</p>
+            <strong>{{ user?.linkedMinecraft || 'Не привязан' }}</strong>
+            <p class="muted">Этот ник используется для связи с сервером и профилем Discord.</p>
+          </article>
+
+          <article class="panel stat-card">
+            <p class="card-title">ПРОЦЕСС</p>
+            <ul>
+              <li>Войти через Discord</li>
+              <li>Указать ник Minecraft</li>
+              <li>Использовать один профиль на сайте</li>
+            </ul>
+          </article>
+        </section>
+
+        <section class="panel form-panel">
+          <div class="form-head">
+            <h3>Привязать Minecraft аккаунт</h3>
+            <span class="badge">3-16</span>
+          </div>
+          <p class="muted">Допустимы латиница, цифры и символ «_».</p>
+
+          <form class="link-form" @submit.prevent="submitLink">
+            <label for="nickname">Ник на сервере</label>
+            <div class="row">
+              <input
+                id="nickname"
+                v-model.trim="nickname"
+                type="text"
+                placeholder="Nickname (3-16, latin letters/digits/_ )"
+                minlength="3"
+                maxlength="16"
+                required
+              />
+              <button class="primary" type="submit" :disabled="submitting">
+                {{ submitting ? 'Сохраняем...' : 'Сохранить' }}
+              </button>
+            </div>
+          </form>
+
+          <p v-if="status" class="status" :class="{ error: statusType === 'error' }">{{ status }}</p>
+        </section>
+      </div>
     </section>
 
-    <section v-else class="cabinet-shell empty">
+    <section v-else class="auth-empty panel">
       <h1>Профиль недоступен</h1>
       <p class="muted">Войдите через Discord, чтобы открыть личный кабинет.</p>
       <a class="primary" :href="loginUrl">Войти через Discord</a>
@@ -80,12 +105,8 @@ const copied = ref(false)
 const avatarUrl = computed(() => user.value?.avatarUrl || '/favicon.ico')
 const displayName = computed(() => user.value?.displayName || user.value?.username || 'Пользователь')
 const fullProfileUrl = computed(() => {
-  if (!profilePath.value) {
-    return ''
-  }
-  if (process.client) {
-    return `${window.location.origin}${profilePath.value}`
-  }
+  if (!profilePath.value) return ''
+  if (process.client) return `${window.location.origin}${profilePath.value}`
   return profilePath.value
 })
 
@@ -96,9 +117,7 @@ onMounted(() => {
 watch(
   () => user.value?.linkedMinecraft,
   (linked) => {
-    if (linked && !nickname.value) {
-      nickname.value = linked
-    }
+    if (linked && !nickname.value) nickname.value = linked
   },
   { immediate: true }
 )
@@ -127,9 +146,7 @@ const submitLink = async () => {
 
 const copyProfileLink = async () => {
   copied.value = false
-  if (!process.client || !fullProfileUrl.value) {
-    return
-  }
+  if (!process.client || !fullProfileUrl.value) return
 
   try {
     await navigator.clipboard.writeText(fullProfileUrl.value)
@@ -146,61 +163,85 @@ const handleLogout = async () => {
 </script>
 
 <style scoped>
-.cabinet-page {
+.profile-page {
   min-height: calc(100vh - 220px);
   display: grid;
-  place-items: center;
 }
 
-.cabinet-shell {
-  width: min(940px, 100%);
+.crm-shell {
   display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
   gap: 18px;
-  padding: 24px;
-  border-radius: 24px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: linear-gradient(145deg, rgba(20, 22, 34, 0.96), rgba(12, 13, 22, 0.98));
-  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.35);
 }
 
-.hero-card {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 18px;
+.identity-column,
+.workspace-column {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.panel {
+  border: 1px solid rgba(255, 255, 255, 0.11);
   border-radius: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: linear-gradient(120deg, rgba(228, 94, 56, 0.22), rgba(28, 30, 48, 0.6));
+  background: linear-gradient(160deg, rgba(18, 19, 30, 0.92), rgba(11, 12, 20, 0.97));
+  backdrop-filter: blur(8px);
+  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.3);
+}
+
+.identity-card {
+  padding: 18px;
+  display: grid;
+  gap: 10px;
+}
+
+.avatar-wrap {
+  position: relative;
+  width: 88px;
+  height: 88px;
 }
 
 .avatar {
-  width: 84px;
-  height: 84px;
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.08);
+  width: 88px;
+  height: 88px;
+  border-radius: 22px;
   object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
 }
 
-.kicker {
-  margin: 0 0 8px;
+.online-dot {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #35f18c;
+  border: 3px solid #161722;
+  box-shadow: 0 0 12px rgba(53, 241, 140, 0.65);
+}
+
+.eyebrow {
+  margin: 0;
   font-size: 12px;
-  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.82);
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.7);
 }
 
 h1,
-h2 {
+h2,
+h3 {
   margin: 0;
 }
 
 h1 {
-  font-size: clamp(28px, 4vw, 38px);
+  font-size: clamp(26px, 3.8vw, 34px);
 }
 
 h2 {
-  font-size: 22px;
+  font-size: clamp(20px, 3vw, 28px);
 }
 
 .muted {
@@ -208,19 +249,64 @@ h2 {
   color: var(--muted);
 }
 
-.cards-grid {
+.email {
+  font-size: 13px;
+}
+
+.identity-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.profile-link {
+  color: #f8b7a4;
+  text-decoration: none;
+  word-break: break-all;
+  font-size: 13px;
+}
+
+.mini-card {
+  padding: 14px 16px;
+  display: grid;
+  gap: 6px;
+}
+
+.mini-label {
+  margin: 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.mini-value {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.workspace-head {
+  padding: 16px 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.stats-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
 }
 
-.info-card {
+.stat-card {
+  padding: 16px;
   display: grid;
   gap: 10px;
-  padding: 16px;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.03);
+}
+
+.stat-card.highlight {
+  background: linear-gradient(145deg, rgba(228, 94, 56, 0.2), rgba(11, 12, 20, 0.95));
 }
 
 .card-title {
@@ -228,32 +314,42 @@ h2 {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: rgba(255, 255, 255, 0.65);
+  color: rgba(255, 255, 255, 0.62);
 }
 
-.card-value {
+.stat-card strong {
   font-size: 24px;
   font-family: 'Neue Machine', 'Montserrat', sans-serif;
 }
 
-.profile-link {
-  color: #ffd2c4;
-  text-decoration: none;
-  word-break: break-all;
+.stat-card ul {
+  margin: 0;
+  padding-left: 16px;
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
 }
 
-.inline-actions {
+.form-panel {
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.form-head {
   display: flex;
+  justify-content: space-between;
+  align-items: center;
   gap: 10px;
 }
 
-.link-panel {
-  display: grid;
-  gap: 12px;
-  padding: 16px;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(14, 16, 28, 0.75);
+.badge {
+  font-size: 11px;
+  border-radius: 999px;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
 }
 
 .link-form {
@@ -305,14 +401,9 @@ input {
 }
 
 .ghost.danger {
-  color: #ffb1a0;
+  color: #ffb9a8;
   border-color: rgba(228, 94, 56, 0.42);
   background: rgba(228, 94, 56, 0.14);
-}
-
-.cabinet-actions {
-  display: flex;
-  justify-content: flex-end;
 }
 
 .status {
@@ -324,13 +415,23 @@ input {
   color: #ff9f9f;
 }
 
-.empty {
+.auth-empty {
+  margin: auto;
+  width: min(600px, 100%);
+  display: grid;
+  gap: 12px;
   text-align: center;
-  place-items: center;
+  padding: 28px;
 }
 
-@media (max-width: 900px) {
-  .cards-grid {
+@media (max-width: 1024px) {
+  .crm-shell {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .stats-grid {
     grid-template-columns: 1fr;
   }
 
@@ -338,12 +439,9 @@ input {
     grid-template-columns: 1fr;
   }
 
-  .cabinet-actions {
-    justify-content: stretch;
-  }
-
-  .cabinet-actions .ghost {
-    width: 100%;
+  .workspace-head {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 </style>
