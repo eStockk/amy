@@ -17,11 +17,16 @@ import (
 )
 
 type DiscordAuthHandler struct {
-	clientID     string
-	clientSecret string
-	redirectURL  string
-	frontendURL  string
-	collection   *mongo.Collection
+	clientID             string
+	clientSecret         string
+	redirectURL          string
+	frontendURL          string
+	ticketWebhookURL     string
+	rpWebhookURL         string
+	minecraftServerToken string
+	userCollection       *mongo.Collection
+	rpCollection         *mongo.Collection
+	codeCollection       *mongo.Collection
 }
 
 type discordTokenResponse struct {
@@ -40,14 +45,17 @@ type discordUser struct {
 }
 
 type discordUserDoc struct {
-	DiscordID       string    `bson:"discordId" json:"id"`
-	Username        string    `bson:"username" json:"username"`
-	GlobalName      string    `bson:"globalName" json:"globalName"`
-	Email           string    `bson:"email" json:"email"`
-	Avatar          string    `bson:"avatar" json:"avatar"`
-	LinkedMinecraft string    `bson:"linkedMinecraft,omitempty" json:"linkedMinecraft,omitempty"`
-	CreatedAt       time.Time `bson:"createdAt,omitempty" json:"createdAt,omitempty"`
-	UpdatedAt       time.Time `bson:"updatedAt,omitempty" json:"updatedAt,omitempty"`
+	DiscordID           string     `bson:"discordId" json:"id"`
+	Username            string     `bson:"username" json:"username"`
+	GlobalName          string     `bson:"globalName" json:"globalName"`
+	Email               string     `bson:"email" json:"email"`
+	Avatar              string     `bson:"avatar" json:"avatar"`
+	LinkedMinecraft     string     `bson:"linkedMinecraft,omitempty" json:"linkedMinecraft,omitempty"`
+	RPFirstName         string     `bson:"rpFirstName,omitempty" json:"rpFirstName,omitempty"`
+	RPLastName          string     `bson:"rpLastName,omitempty" json:"rpLastName,omitempty"`
+	MinecraftVerifiedAt *time.Time `bson:"minecraftVerifiedAt,omitempty" json:"minecraftVerifiedAt,omitempty"`
+	CreatedAt           time.Time  `bson:"createdAt,omitempty" json:"createdAt,omitempty"`
+	UpdatedAt           time.Time  `bson:"updatedAt,omitempty" json:"updatedAt,omitempty"`
 }
 
 type discordMeResponse struct {
@@ -56,18 +64,17 @@ type discordMeResponse struct {
 }
 
 type discordUserOut struct {
-	ID              string `json:"id"`
-	Username        string `json:"username"`
-	DisplayName     string `json:"displayName"`
-	Email           string `json:"email"`
-	Avatar          string `json:"avatar"`
-	AvatarURL       string `json:"avatarUrl"`
-	LinkedMinecraft string `json:"linkedMinecraft,omitempty"`
-	ProfileURL      string `json:"profileUrl"`
-}
-
-type linkMinecraftRequest struct {
-	Nickname string `json:"nickname"`
+	ID              string                   `json:"id"`
+	Username        string                   `json:"username"`
+	DisplayName     string                   `json:"displayName"`
+	Email           string                   `json:"email"`
+	Avatar          string                   `json:"avatar"`
+	AvatarURL       string                   `json:"avatarUrl"`
+	LinkedMinecraft string                   `json:"linkedMinecraft,omitempty"`
+	RPFirstName     string                   `json:"rpFirstName,omitempty"`
+	RPLastName      string                   `json:"rpLastName,omitempty"`
+	ProfileURL      string                   `json:"profileUrl"`
+	RPApplication   *rpApplicationSummaryOut `json:"rpApplication,omitempty"`
 }
 
 type publicProfileResponse struct {
@@ -80,18 +87,47 @@ type publicProfile struct {
 	DisplayName     string     `json:"displayName"`
 	AvatarURL       string     `json:"avatarUrl"`
 	LinkedMinecraft string     `json:"linkedMinecraft,omitempty"`
+	RPFirstName     string     `json:"rpFirstName,omitempty"`
+	RPLastName      string     `json:"rpLastName,omitempty"`
 	JoinedAt        *time.Time `json:"joinedAt,omitempty"`
+}
+
+type rpApplicationSummaryOut struct {
+	ID          string     `json:"id"`
+	Status      string     `json:"status"`
+	Nickname    string     `json:"nickname"`
+	RPName      string     `json:"rpName,omitempty"`
+	Race        string     `json:"race,omitempty"`
+	Gender      string     `json:"gender,omitempty"`
+	BirthDate   string     `json:"birthDate,omitempty"`
+	CreatedAt   *time.Time `json:"createdAt,omitempty"`
+	UpdatedAt   *time.Time `json:"updatedAt,omitempty"`
+	ModeratedAt *time.Time `json:"moderatedAt,omitempty"`
 }
 
 var minecraftNicknameRe = regexp.MustCompile(`^[A-Za-z0-9_]{3,16}$`)
 
-func NewDiscordAuthHandler(db *mongo.Database, clientID, clientSecret, redirectURL, frontendURL string) *DiscordAuthHandler {
+func NewDiscordAuthHandler(
+	db *mongo.Database,
+	clientID,
+	clientSecret,
+	redirectURL,
+	frontendURL,
+	ticketWebhookURL,
+	rpWebhookURL,
+	minecraftServerToken string,
+) *DiscordAuthHandler {
 	return &DiscordAuthHandler{
-		clientID:     clientID,
-		clientSecret: clientSecret,
-		redirectURL:  redirectURL,
-		frontendURL:  frontendURL,
-		collection:   db.Collection("discord_users"),
+		clientID:             clientID,
+		clientSecret:         clientSecret,
+		redirectURL:          redirectURL,
+		frontendURL:          frontendURL,
+		ticketWebhookURL:     ticketWebhookURL,
+		rpWebhookURL:         rpWebhookURL,
+		minecraftServerToken: minecraftServerToken,
+		userCollection:       db.Collection("discord_users"),
+		rpCollection:         db.Collection("rp_applications"),
+		codeCollection:       db.Collection("minecraft_verification_codes"),
 	}
 }
 
@@ -166,7 +202,7 @@ func (h *DiscordAuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	_, _ = h.collection.UpdateOne(
+	_, _ = h.userCollection.UpdateOne(
 		ctx,
 		bson.M{"discordId": user.ID},
 		bson.M{
@@ -206,10 +242,12 @@ func (h *DiscordAuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	var user discordUserDoc
-	if err := h.collection.FindOne(ctx, bson.M{"discordId": cookie.Value}).Decode(&user); err != nil {
+	if err := h.userCollection.FindOne(ctx, bson.M{"discordId": cookie.Value}).Decode(&user); err != nil {
 		writeJSON(w, http.StatusOK, discordMeResponse{Authenticated: false})
 		return
 	}
+
+	summary, _ := h.latestApplicationSummary(ctx, user.DiscordID)
 
 	writeJSON(w, http.StatusOK, discordMeResponse{
 		Authenticated: true,
@@ -221,7 +259,10 @@ func (h *DiscordAuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 			Avatar:          user.Avatar,
 			AvatarURL:       avatarURLFor(user.DiscordID, user.Avatar),
 			LinkedMinecraft: user.LinkedMinecraft,
+			RPFirstName:     user.RPFirstName,
+			RPLastName:      user.RPLastName,
 			ProfileURL:      buildProfileURL(h.frontendURL, user.DiscordID),
+			RPApplication:   summary,
 		},
 	})
 }
@@ -252,7 +293,7 @@ func (h *DiscordAuthHandler) PublicProfile(w http.ResponseWriter, r *http.Reques
 	defer cancel()
 
 	var user discordUserDoc
-	err := h.collection.FindOne(ctx, bson.M{"discordId": profileID}).Decode(&user)
+	err := h.userCollection.FindOne(ctx, bson.M{"discordId": profileID}).Decode(&user)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			writeError(w, http.StatusNotFound, "profile not found")
@@ -263,56 +304,6 @@ func (h *DiscordAuthHandler) PublicProfile(w http.ResponseWriter, r *http.Reques
 	}
 
 	writeJSON(w, http.StatusOK, publicProfileResponse{Profile: toPublicProfile(user)})
-}
-
-func (h *DiscordAuthHandler) LinkMinecraft(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	cookie, err := r.Cookie("discord_id")
-	if err != nil || cookie.Value == "" {
-		writeError(w, http.StatusUnauthorized, "not authenticated")
-		return
-	}
-
-	var payload linkMinecraftRequest
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json")
-		return
-	}
-
-	payload.Nickname = strings.TrimSpace(payload.Nickname)
-	if !minecraftNicknameRe.MatchString(payload.Nickname) {
-		writeError(w, http.StatusBadRequest, "nickname must be 3-16 chars and contain only latin letters, digits or _")
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	result, err := h.collection.UpdateOne(
-		ctx,
-		bson.M{"discordId": cookie.Value},
-		bson.M{"$set": bson.M{
-			"linkedMinecraft": payload.Nickname,
-			"updatedAt":       time.Now().UTC(),
-		}},
-	)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to link minecraft account")
-		return
-	}
-	if result.MatchedCount == 0 {
-		writeError(w, http.StatusUnauthorized, "not authenticated")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"status":   "ok",
-		"nickname": payload.Nickname,
-	})
 }
 
 func resolveCookieOptions(frontendURL string, r *http.Request) (string, bool) {
@@ -411,6 +402,8 @@ func toPublicProfile(user discordUserDoc) *publicProfile {
 		DisplayName:     displayNameFor(user),
 		AvatarURL:       avatarURLFor(user.DiscordID, user.Avatar),
 		LinkedMinecraft: user.LinkedMinecraft,
+		RPFirstName:     user.RPFirstName,
+		RPLastName:      user.RPLastName,
 	}
 	if !user.CreatedAt.IsZero() {
 		createdAt := user.CreatedAt.UTC()

@@ -11,6 +11,8 @@ type Config struct {
 	DiscordClientSecret  string
 	DiscordRedirectURL   string
 	DiscordTicketWebhook string
+	DiscordRPWebhook     string
+	MinecraftServerToken string
 }
 
 func Load() Config {
@@ -23,6 +25,8 @@ func Load() Config {
 		DiscordClientSecret:  getEnv("DISCORD_CLIENT_SECRET", ""),
 		DiscordRedirectURL:   getEnv("DISCORD_REDIRECT_URL", "http://localhost:8080/api/auth/discord/callback"),
 		DiscordTicketWebhook: getEnv("DISCORD_TICKET_WEBHOOK", ""),
+		DiscordRPWebhook:     getEnv("DISCORD_RP_WEBHOOK", ""),
+		MinecraftServerToken: getEnv("MINECRAFT_SERVER_TOKEN", ""),
 	}
 }
 

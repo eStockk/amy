@@ -1,3 +1,16 @@
+export type RPApplicationSummary = {
+  id: string
+  status: 'pending' | 'approved' | 'rejected'
+  nickname: string
+  rpName?: string
+  race?: string
+  gender?: string
+  birthDate?: string
+  createdAt?: string
+  updatedAt?: string
+  moderatedAt?: string
+}
+
 export type AuthUser = {
   id: string
   username: string
@@ -6,12 +19,28 @@ export type AuthUser = {
   avatar?: string
   avatarUrl?: string
   linkedMinecraft?: string
+  rpFirstName?: string
+  rpLastName?: string
   profileUrl?: string
+  rpApplication?: RPApplicationSummary
 }
 
 type AuthResponse = {
   authenticated: boolean
   user?: AuthUser
+}
+
+type RPApplicationPayload = {
+  nickname: string
+  source?: string
+  rpName?: string
+  birthDate: string
+  race: string
+  gender: string
+  skills: string
+  plan: string
+  biography: string
+  skinUrl: string
 }
 
 export function useAuth() {
@@ -32,11 +61,20 @@ export function useAuth() {
   const loginUrl = computed(() => `${config.public.apiBase}/auth/discord/start`)
   const profilePath = computed(() => (user.value?.id ? `/u/${user.value.id}` : '/profile'))
 
-  const linkMinecraft = async (nickname: string) => {
-    await $fetch(`${config.public.apiBase}/auth/link-minecraft`, {
+  const submitRPApplication = async (payload: RPApplicationPayload) => {
+    await $fetch(`${config.public.apiBase}/rp/applications`, {
       method: 'POST',
       credentials: 'include',
-      body: { nickname }
+      body: payload
+    })
+    await refresh()
+  }
+
+  const verifyMinecraftCode = async (code: string) => {
+    await $fetch(`${config.public.apiBase}/auth/verify-minecraft`, {
+      method: 'POST',
+      credentials: 'include',
+      body: { code }
     })
     await refresh()
   }
@@ -49,5 +87,16 @@ export function useAuth() {
     await refresh()
   }
 
-  return { authenticated, user, pending, error, refresh, loginUrl, profilePath, linkMinecraft, logout }
+  return {
+    authenticated,
+    user,
+    pending,
+    error,
+    refresh,
+    loginUrl,
+    profilePath,
+    submitRPApplication,
+    verifyMinecraftCode,
+    logout
+  }
 }

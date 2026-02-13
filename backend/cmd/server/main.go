@@ -43,6 +43,9 @@ func main() {
 		cfg.DiscordClientSecret,
 		cfg.DiscordRedirectURL,
 		cfg.FrontendURL,
+		cfg.DiscordTicketWebhook,
+		cfg.DiscordRPWebhook,
+		cfg.MinecraftServerToken,
 	)
 
 	mux := http.NewServeMux()
@@ -56,8 +59,12 @@ func main() {
 	mux.HandleFunc("/api/auth/discord/callback", discordHandler.Callback)
 	mux.HandleFunc("/api/auth/me", discordHandler.Me)
 	mux.HandleFunc("/api/auth/logout", discordHandler.Logout)
-	mux.HandleFunc("/api/auth/link-minecraft", discordHandler.LinkMinecraft)
+	mux.HandleFunc("/api/auth/verify-minecraft", discordHandler.VerifyMinecraftCode)
 	mux.HandleFunc("/api/profiles/", discordHandler.PublicProfile)
+	mux.HandleFunc("/api/rp/applications", discordHandler.SubmitRPApplication)
+	mux.HandleFunc("/api/rp/applications/", discordHandler.ModerateRPApplication)
+	mux.HandleFunc("/api/minecraft/verification-code", discordHandler.RequestMinecraftVerificationCode)
+	mux.HandleFunc("/api/minecraft/rp-name", discordHandler.UpdateMineRPName)
 	mux.HandleFunc("/api/support/tickets", supportHandler.Create)
 
 	server := &http.Server{

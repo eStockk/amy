@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div>
     <div v-if="isOpen" class="overlay" @click="close"></div>
     <aside class="sidebar" :class="{ open: isOpen }">
@@ -9,6 +9,7 @@
         </span>
         <span class="logo-text">Amy</span>
       </div>
+
       <nav class="nav">
         <NuxtLink class="nav-link" to="/" @click="close">
           <span class="icon">H</span>
@@ -39,6 +40,7 @@
           <span class="label">Документация</span>
         </NuxtLink>
       </nav>
+
       <div class="sidebar-footer">
         <NuxtLink v-if="authenticated" class="user-card" :to="profilePath" @click="close">
           <img class="user-avatar" :src="avatarUrl" alt="avatar" />
@@ -47,12 +49,15 @@
             <span class="user-sub">{{ profileSubtitle }}</span>
           </div>
         </NuxtLink>
+
         <button v-if="authenticated" class="pill logout" type="button" @click="onLogout">Выйти</button>
+
         <a v-else class="pill discord" :href="loginUrl" @click="close">
           <img :src="discordIcon" alt="Discord" />
           <span class="label">Войти через Discord</span>
         </a>
       </div>
+
       <div class="edge"></div>
     </aside>
   </div>
@@ -70,7 +75,16 @@ const { authenticated, user, loginUrl, profilePath, logout, refresh } = useAuth(
 
 const avatarUrl = computed(() => user.value?.avatarUrl || logo)
 const displayName = computed(() => user.value?.displayName || user.value?.username || 'Пользователь')
-const profileSubtitle = computed(() => (user.value?.linkedMinecraft ? `Привязка: ${user.value.linkedMinecraft}` : 'Личный кабинет'))
+
+const profileSubtitle = computed(() => {
+  if (user.value?.rpApplication?.status === 'pending') {
+    return 'RP-заявка на рассмотрении'
+  }
+  if (user.value?.linkedMinecraft) {
+    return `Minecraft: ${user.value.linkedMinecraft}`
+  }
+  return 'Личный кабинет'
+})
 
 const toggle = () => {
   isOpen.value = !isOpen.value
