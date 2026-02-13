@@ -6,6 +6,7 @@ export type AuthUser = {
   avatar?: string
   avatarUrl?: string
   linkedMinecraft?: string
+  profileUrl?: string
 }
 
 type AuthResponse = {
@@ -29,6 +30,7 @@ export function useAuth() {
   const authenticated = computed(() => Boolean(data.value?.authenticated))
   const user = computed(() => data.value?.user)
   const loginUrl = computed(() => `${config.public.apiBase}/auth/discord/start`)
+  const profilePath = computed(() => (user.value?.id ? `/u/${user.value.id}` : '/profile'))
 
   const linkMinecraft = async (nickname: string) => {
     await $fetch(`${config.public.apiBase}/auth/link-minecraft`, {
@@ -39,5 +41,13 @@ export function useAuth() {
     await refresh()
   }
 
-  return { authenticated, user, pending, error, refresh, loginUrl, linkMinecraft }
+  const logout = async () => {
+    await $fetch(`${config.public.apiBase}/auth/logout`, {
+      method: 'POST',
+      credentials: 'include'
+    })
+    await refresh()
+  }
+
+  return { authenticated, user, pending, error, refresh, loginUrl, profilePath, linkMinecraft, logout }
 }

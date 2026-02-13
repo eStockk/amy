@@ -40,13 +40,14 @@
         </NuxtLink>
       </nav>
       <div class="sidebar-footer">
-        <NuxtLink v-if="authenticated" class="user-card" to="/profile" @click="close">
+        <NuxtLink v-if="authenticated" class="user-card" :to="profilePath" @click="close">
           <img class="user-avatar" :src="avatarUrl" alt="avatar" />
           <div class="user-meta">
             <span class="user-name">{{ displayName }}</span>
             <span class="user-sub">{{ profileSubtitle }}</span>
           </div>
         </NuxtLink>
+        <button v-if="authenticated" class="pill logout" type="button" @click="onLogout">Выйти</button>
         <a v-else class="pill discord" :href="loginUrl" @click="close">
           <img :src="discordIcon" alt="Discord" />
           <span class="label">Войти через Discord</span>
@@ -64,7 +65,8 @@ import { useAuth } from '~/composables/useAuth'
 
 const isOpen = ref(false)
 const route = useRoute()
-const { authenticated, user, loginUrl, refresh } = useAuth()
+const router = useRouter()
+const { authenticated, user, loginUrl, profilePath, logout, refresh } = useAuth()
 
 const avatarUrl = computed(() => user.value?.avatarUrl || logo)
 const displayName = computed(() => user.value?.displayName || user.value?.username || 'Пользователь')
@@ -76,6 +78,12 @@ const toggle = () => {
 
 const close = () => {
   isOpen.value = false
+}
+
+const onLogout = async () => {
+  await logout()
+  close()
+  await router.push('/')
 }
 
 onMounted(() => {
@@ -294,6 +302,11 @@ watch(
 .pill.discord img {
   width: 18px;
   height: 18px;
+}
+
+.pill.logout {
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.07);
 }
 
 .edge {

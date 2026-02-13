@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net"
 	"net/http"
 	"net/url"
@@ -39,12 +40,14 @@ type discordUser struct {
 }
 
 type discordUserDoc struct {
-	DiscordID       string `bson:"discordId" json:"id"`
-	Username        string `bson:"username" json:"username"`
-	GlobalName      string `bson:"globalName" json:"globalName"`
-	Email           string `bson:"email" json:"email"`
-	Avatar          string `bson:"avatar" json:"avatar"`
-	LinkedMinecraft string `bson:"linkedMinecraft,omitempty" json:"linkedMinecraft,omitempty"`
+	DiscordID       string    `bson:"discordId" json:"id"`
+	Username        string    `bson:"username" json:"username"`
+	GlobalName      string    `bson:"globalName" json:"globalName"`
+	Email           string    `bson:"email" json:"email"`
+	Avatar          string    `bson:"avatar" json:"avatar"`
+	LinkedMinecraft string    `bson:"linkedMinecraft,omitempty" json:"linkedMinecraft,omitempty"`
+	CreatedAt       time.Time `bson:"createdAt,omitempty" json:"createdAt,omitempty"`
+	UpdatedAt       time.Time `bson:"updatedAt,omitempty" json:"updatedAt,omitempty"`
 }
 
 type discordMeResponse struct {
@@ -60,10 +63,24 @@ type discordUserOut struct {
 	Avatar          string `json:"avatar"`
 	AvatarURL       string `json:"avatarUrl"`
 	LinkedMinecraft string `json:"linkedMinecraft,omitempty"`
+	ProfileURL      string `json:"profileUrl"`
 }
 
 type linkMinecraftRequest struct {
 	Nickname string `json:"nickname"`
+}
+
+type publicProfileResponse struct {
+	Profile *publicProfile `json:"profile"`
+}
+
+type publicProfile struct {
+	ID              string     `json:"id"`
+	Username        string     `json:"username"`
+	DisplayName     string     `json:"displayName"`
+	AvatarURL       string     `json:"avatarUrl"`
+	LinkedMinecraft string     `json:"linkedMinecraft,omitempty"`
+	JoinedAt        *time.Time `json:"joinedAt,omitempty"`
 }
 
 var minecraftNicknameRe = regexp.MustCompile(`^[A-Za-z0-9_]{3,16}$`)
@@ -168,20 +185,7 @@ func (h *DiscordAuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		options.Update().SetUpsert(true),
 	)
 
-	cookieDomain, secureCookie := resolveCookieOptions(h.frontendURL, r)
-	cookie := &http.Cookie{
-		Name:     "discord_id",
-		Value:    user.ID,
-		Path:     "/",
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-		Secure:   secureCookie,
-		Expires:  time.Now().Add(30 * 24 * time.Hour),
-	}
-	if cookieDomain != "" {
-		cookie.Domain = cookieDomain
-	}
-	http.SetCookie(w, cookie)
+	setSessionCookie(w, r, h.frontendURL, user.ID)
 
 	redirectTo := h.frontendURL
 	if redirectTo == "" {
@@ -207,28 +211,58 @@ func (h *DiscordAuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	avatarURL := ""
-	if user.Avatar != "" {
-		avatarURL = "https://cdn.discordapp.com/avatars/" + user.DiscordID + "/" + user.Avatar + ".png?size=128"
-	}
-
-	displayName := strings.TrimSpace(user.GlobalName)
-	if displayName == "" {
-		displayName = user.Username
-	}
-
 	writeJSON(w, http.StatusOK, discordMeResponse{
 		Authenticated: true,
 		User: &discordUserOut{
 			ID:              user.DiscordID,
 			Username:        user.Username,
-			DisplayName:     displayName,
+			DisplayName:     displayNameFor(user),
 			Email:           user.Email,
 			Avatar:          user.Avatar,
-			AvatarURL:       avatarURL,
+			AvatarURL:       avatarURLFor(user.DiscordID, user.Avatar),
 			LinkedMinecraft: user.LinkedMinecraft,
+			ProfileURL:      buildProfileURL(h.frontendURL, user.DiscordID),
 		},
 	})
+}
+
+func (h *DiscordAuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	clearSessionCookie(w, r, h.frontendURL)
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *DiscordAuthHandler) PublicProfile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	profileID := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/profiles/"), "/")
+	if profileID == "" || strings.Contains(profileID, "/") {
+		writeError(w, http.StatusNotFound, "profile not found")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	var user discordUserDoc
+	err := h.collection.FindOne(ctx, bson.M{"discordId": profileID}).Decode(&user)
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			writeError(w, http.StatusNotFound, "profile not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to load profile")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, publicProfileResponse{Profile: toPublicProfile(user)})
 }
 
 func (h *DiscordAuthHandler) LinkMinecraft(w http.ResponseWriter, r *http.Request) {
@@ -308,4 +342,79 @@ func resolveCookieOptions(frontendURL string, r *http.Request) (string, bool) {
 	}
 
 	return configuredHost, secure
+}
+
+func setSessionCookie(w http.ResponseWriter, r *http.Request, frontendURL, value string) {
+	cookieDomain, secureCookie := resolveCookieOptions(frontendURL, r)
+	cookie := &http.Cookie{
+		Name:     "discord_id",
+		Value:    value,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   secureCookie,
+		Expires:  time.Now().Add(30 * 24 * time.Hour),
+	}
+	if cookieDomain != "" {
+		cookie.Domain = cookieDomain
+	}
+	http.SetCookie(w, cookie)
+}
+
+func clearSessionCookie(w http.ResponseWriter, r *http.Request, frontendURL string) {
+	cookieDomain, secureCookie := resolveCookieOptions(frontendURL, r)
+	cookie := &http.Cookie{
+		Name:     "discord_id",
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   secureCookie,
+		Expires:  time.Unix(0, 0),
+		MaxAge:   -1,
+	}
+	if cookieDomain != "" {
+		cookie.Domain = cookieDomain
+	}
+	http.SetCookie(w, cookie)
+}
+
+func displayNameFor(user discordUserDoc) string {
+	displayName := strings.TrimSpace(user.GlobalName)
+	if displayName == "" {
+		displayName = user.Username
+	}
+	return displayName
+}
+
+func avatarURLFor(discordID, avatar string) string {
+	if avatar == "" || discordID == "" {
+		return ""
+	}
+	return "https://cdn.discordapp.com/avatars/" + discordID + "/" + avatar + ".png?size=256"
+}
+
+func buildProfileURL(frontendURL, discordID string) string {
+	if discordID == "" {
+		return ""
+	}
+	if frontendURL == "" {
+		return "/u/" + discordID
+	}
+	return strings.TrimRight(frontendURL, "/") + "/u/" + discordID
+}
+
+func toPublicProfile(user discordUserDoc) *publicProfile {
+	profile := &publicProfile{
+		ID:              user.DiscordID,
+		Username:        user.Username,
+		DisplayName:     displayNameFor(user),
+		AvatarURL:       avatarURLFor(user.DiscordID, user.Avatar),
+		LinkedMinecraft: user.LinkedMinecraft,
+	}
+	if !user.CreatedAt.IsZero() {
+		createdAt := user.CreatedAt.UTC()
+		profile.JoinedAt = &createdAt
+	}
+	return profile
 }

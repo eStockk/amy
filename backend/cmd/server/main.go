@@ -55,7 +55,9 @@ func main() {
 	mux.HandleFunc("/api/auth/discord/start", discordHandler.Start)
 	mux.HandleFunc("/api/auth/discord/callback", discordHandler.Callback)
 	mux.HandleFunc("/api/auth/me", discordHandler.Me)
+	mux.HandleFunc("/api/auth/logout", discordHandler.Logout)
 	mux.HandleFunc("/api/auth/link-minecraft", discordHandler.LinkMinecraft)
+	mux.HandleFunc("/api/profiles/", discordHandler.PublicProfile)
 	mux.HandleFunc("/api/support/tickets", supportHandler.Create)
 
 	server := &http.Server{
