@@ -31,6 +31,7 @@ go run ./cmd/server
 - `POST /api/auth/logout` - logout
 - `POST /api/auth/verify-minecraft` - verify website account with one-time code
 - `POST /api/rp/applications` - submit RP application
+- `DELETE /api/rp/applications/{id}` - delete own RP ticket (site + Discord message)
 - `GET /api/rp/applications/{id}/moderate?action=approve|reject&token=...` - moderation endpoint for Discord buttons
 - `POST /api/minecraft/verification-code` - generate/reuse verification code (server token required)
 - `POST /api/minecraft/rp-name` - sync RP first/last name from server plugin (server token required)

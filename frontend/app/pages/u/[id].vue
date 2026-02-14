@@ -46,6 +46,16 @@
           <p class="muted" v-if="isOwner && applicationSummary?.updatedAt">
             Обновлено: {{ formatDate(applicationSummary.updatedAt) }}
           </p>
+          <button
+            v-if="isOwner && applicationSummary"
+            class="ghost danger"
+            type="button"
+            :disabled="deletePending"
+            @click="deleteApplication"
+          >
+            {{ deletePending ? 'Удаляем...' : 'Удалить RP-тикет' }}
+          </button>
+          <p v-if="deleteMessage" class="status" :class="{ error: deleteError }">{{ deleteMessage }}</p>
           <p class="muted" v-if="!isOwner">Только владелец профиля может подавать и редактировать RP-заявку.</p>
         </article>
       </aside>
@@ -207,6 +217,7 @@ const {
   user,
   refresh,
   submitRPApplication,
+  deleteRPApplication,
   verifyMinecraftCode,
   logout
 } = useAuth()
@@ -229,6 +240,10 @@ const verifyError = ref(false)
 const submitPending = ref(false)
 const submitMessage = ref('')
 const submitError = ref(false)
+
+const deletePending = ref(false)
+const deleteMessage = ref('')
+const deleteError = ref(false)
 
 const form = reactive({
   nickname: '',
@@ -473,6 +488,26 @@ const submitApplication = async () => {
     submitMessage.value = message || 'Не удалось отправить заявку. Попробуйте позже.'
   } finally {
     submitPending.value = false
+  }
+}
+
+const deleteApplication = async () => {
+  if (!applicationSummary.value?.id) return
+
+  deleteMessage.value = ''
+  deleteError.value = false
+  deletePending.value = true
+
+  try {
+    await deleteRPApplication(applicationSummary.value.id)
+    deleteMessage.value = 'RP-тикет удален с сайта и из Discord.'
+    await loadProfile()
+  } catch (error: unknown) {
+    deleteError.value = true
+    const message = (error as { data?: { error?: string } })?.data?.error
+    deleteMessage.value = message || 'Не удалось удалить RP-тикет.'
+  } finally {
+    deletePending.value = false
   }
 }
 

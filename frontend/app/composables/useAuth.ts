@@ -1,4 +1,4 @@
-export type RPApplicationSummary = {
+﻿export type RPApplicationSummary = {
   id: string
   status: 'pending' | 'approved' | 'rejected'
   nickname: string
@@ -70,6 +70,14 @@ export function useAuth() {
     await refresh()
   }
 
+  const deleteRPApplication = async (applicationId: string) => {
+    await $fetch(`${config.public.apiBase}/rp/applications/${applicationId}`, {
+      method: 'DELETE',
+      credentials: 'include'
+    })
+    await refresh()
+  }
+
   const verifyMinecraftCode = async (code: string) => {
     await $fetch(`${config.public.apiBase}/auth/verify-minecraft`, {
       method: 'POST',
@@ -96,6 +104,7 @@ export function useAuth() {
     loginUrl,
     profilePath,
     submitRPApplication,
+    deleteRPApplication,
     verifyMinecraftCode,
     logout
   }

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -21,23 +22,24 @@ import (
 )
 
 type rpApplicationDoc struct {
-	ID              primitive.ObjectID `bson:"_id,omitempty"`
-	DiscordID       string             `bson:"discordId"`
-	Nickname        string             `bson:"nickname"`
-	Source          string             `bson:"source,omitempty"`
-	RPName          string             `bson:"rpName,omitempty"`
-	BirthDate       string             `bson:"birthDate"`
-	Race            string             `bson:"race"`
-	Gender          string             `bson:"gender"`
-	Skills          string             `bson:"skills"`
-	Plan            string             `bson:"plan"`
-	Biography       string             `bson:"biography"`
-	SkinURL         string             `bson:"skinUrl"`
-	Status          string             `bson:"status"`
-	ModerationToken string             `bson:"moderationToken"`
-	ModeratedAt     *time.Time         `bson:"moderatedAt,omitempty"`
-	CreatedAt       time.Time          `bson:"createdAt"`
-	UpdatedAt       time.Time          `bson:"updatedAt"`
+	ID               primitive.ObjectID `bson:"_id,omitempty"`
+	DiscordID        string             `bson:"discordId"`
+	Nickname         string             `bson:"nickname"`
+	Source           string             `bson:"source,omitempty"`
+	RPName           string             `bson:"rpName,omitempty"`
+	BirthDate        string             `bson:"birthDate"`
+	Race             string             `bson:"race"`
+	Gender           string             `bson:"gender"`
+	Skills           string             `bson:"skills"`
+	Plan             string             `bson:"plan"`
+	Biography        string             `bson:"biography"`
+	SkinURL          string             `bson:"skinUrl"`
+	Status           string             `bson:"status"`
+	ModerationToken  string             `bson:"moderationToken"`
+	DiscordMessageID string             `bson:"discordMessageId,omitempty"`
+	ModeratedAt      *time.Time         `bson:"moderatedAt,omitempty"`
+	CreatedAt        time.Time          `bson:"createdAt"`
+	UpdatedAt        time.Time          `bson:"updatedAt"`
 }
 
 type rpApplicationRequest struct {
@@ -51,6 +53,10 @@ type rpApplicationRequest struct {
 	Plan      string `json:"plan"`
 	Biography string `json:"biography"`
 	SkinURL   string `json:"skinUrl"`
+}
+
+type discordWebhookMessage struct {
+	ID string `json:"id"`
 }
 
 var imageExtRe = regexp.MustCompile(`(?i)\.(png|jpe?g|webp)$`)
@@ -123,7 +129,20 @@ func (h *DiscordAuthHandler) SubmitRPApplication(w http.ResponseWriter, r *http.
 	doc.ID = id
 
 	if h.rpWebhookURL != "" {
-		h.sendRPApplicationWebhook(doc, user)
+		messageID, webhookErr := h.sendRPApplicationWebhook(doc, user)
+		if webhookErr != nil {
+			_, _ = h.rpCollection.DeleteOne(ctx, bson.M{"_id": doc.ID})
+			writeError(w, http.StatusBadGateway, "failed to send rp ticket to discord")
+			return
+		}
+
+		if messageID != "" {
+			doc.DiscordMessageID = messageID
+			_, _ = h.rpCollection.UpdateByID(ctx, doc.ID, bson.M{"$set": bson.M{
+				"discordMessageId": messageID,
+				"updatedAt":        time.Now().UTC(),
+			}})
+		}
 	}
 
 	writeJSON(w, http.StatusCreated, map[string]any{
@@ -133,12 +152,17 @@ func (h *DiscordAuthHandler) SubmitRPApplication(w http.ResponseWriter, r *http.
 }
 
 func (h *DiscordAuthHandler) ModerateRPApplication(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodDelete {
+		h.DeleteRPApplication(w, r)
+		return
+	}
+
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
-	applicationID, ok := parseApplicationIDFromPath(r.URL.Path)
+	applicationID, ok := parseApplicationModerationIDFromPath(r.URL.Path)
 	if !ok {
 		writeError(w, http.StatusNotFound, "application not found")
 		return
@@ -202,6 +226,54 @@ func (h *DiscordAuthHandler) ModerateRPApplication(w http.ResponseWriter, r *htt
 	h.writeModerationHTML(w, current, action)
 }
 
+func (h *DiscordAuthHandler) DeleteRPApplication(w http.ResponseWriter, r *http.Request) {
+	user, err := h.requireAuthenticatedUser(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+
+	applicationID, ok := parseApplicationDeleteIDFromPath(r.URL.Path)
+	if !ok {
+		writeError(w, http.StatusNotFound, "application not found")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
+
+	var application rpApplicationDoc
+	err = h.rpCollection.FindOne(ctx, bson.M{"_id": applicationID}).Decode(&application)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			writeError(w, http.StatusNotFound, "application not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to load application")
+		return
+	}
+
+	if application.DiscordID != user.DiscordID {
+		writeError(w, http.StatusForbidden, "you can delete only your own application")
+		return
+	}
+
+	if err := h.deleteRPApplicationDiscordMessage(application.DiscordMessageID); err != nil {
+		writeError(w, http.StatusBadGateway, "failed to delete ticket message in discord")
+		return
+	}
+
+	_, err = h.rpCollection.DeleteOne(ctx, bson.M{"_id": applicationID, "discordId": user.DiscordID})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete application")
+		return
+	}
+
+	_, _ = h.codeCollection.DeleteMany(ctx, bson.M{"applicationId": application.ID.Hex()})
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 func (h *DiscordAuthHandler) latestApplicationSummary(ctx context.Context, discordID string) (*rpApplicationSummaryOut, error) {
 	findOpts := options.FindOne().SetSort(bson.D{{Key: "createdAt", Value: -1}})
 	var doc rpApplicationDoc
@@ -226,9 +298,9 @@ func (h *DiscordAuthHandler) latestApplicationSummary(ctx context.Context, disco
 	}, nil
 }
 
-func (h *DiscordAuthHandler) sendRPApplicationWebhook(doc rpApplicationDoc, user *discordUserDoc) {
+func (h *DiscordAuthHandler) sendRPApplicationWebhook(doc rpApplicationDoc, user *discordUserDoc) (string, error) {
 	if h.rpWebhookURL == "" {
-		return
+		return "", nil
 	}
 
 	approveURL := h.moderationURL(doc.ID.Hex(), "approve", doc.ModerationToken)
@@ -269,15 +341,86 @@ func (h *DiscordAuthHandler) sendRPApplicationWebhook(doc rpApplicationDoc, user
 
 	raw, err := json.Marshal(body)
 	if err != nil {
-		return
+		return "", err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, h.rpWebhookURL, bytes.NewReader(raw))
+	requestURL, err := webhookURLWithWait(h.rpWebhookURL)
 	if err != nil {
-		return
+		return "", err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, requestURL, bytes.NewReader(raw))
+	if err != nil {
+		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	_, _ = http.DefaultClient.Do(req)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		bodyRaw, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return "", fmt.Errorf("discord webhook error: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(bodyRaw)))
+	}
+
+	var message discordWebhookMessage
+	if err := json.NewDecoder(resp.Body).Decode(&message); err != nil {
+		return "", nil
+	}
+
+	return strings.TrimSpace(message.ID), nil
+}
+
+func (h *DiscordAuthHandler) deleteRPApplicationDiscordMessage(messageID string) error {
+	messageID = strings.TrimSpace(messageID)
+	if h.rpWebhookURL == "" || messageID == "" {
+		return nil
+	}
+
+	parsed, err := url.Parse(h.rpWebhookURL)
+	if err != nil {
+		return err
+	}
+	parsed.RawQuery = ""
+
+	base := strings.TrimRight(parsed.String(), "/")
+	deleteURL := base + "/messages/" + url.PathEscape(messageID)
+
+	req, err := http.NewRequest(http.MethodDelete, deleteURL, nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		bodyRaw, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return fmt.Errorf("discord webhook delete error: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(bodyRaw)))
+	}
+
+	return nil
+}
+
+func webhookURLWithWait(raw string) (string, error) {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return "", err
+	}
+
+	query := parsed.Query()
+	query.Set("wait", "true")
+	parsed.RawQuery = query.Encode()
+	return parsed.String(), nil
 }
 
 func (h *DiscordAuthHandler) moderationURL(applicationID, action, token string) string {
@@ -288,13 +431,29 @@ func (h *DiscordAuthHandler) moderationURL(applicationID, action, token string) 
 	return fmt.Sprintf("%s/api/rp/applications/%s/moderate?action=%s&token=%s", base, applicationID, action, url.QueryEscape(token))
 }
 
-func parseApplicationIDFromPath(path string) (primitive.ObjectID, bool) {
+func parseApplicationModerationIDFromPath(path string) (primitive.ObjectID, bool) {
 	trimmed := strings.Trim(path, "/")
 	parts := strings.Split(trimmed, "/")
 	if len(parts) < 5 {
 		return primitive.NilObjectID, false
 	}
 	if parts[0] != "api" || parts[1] != "rp" || parts[2] != "applications" || parts[4] != "moderate" {
+		return primitive.NilObjectID, false
+	}
+	id, err := primitive.ObjectIDFromHex(parts[3])
+	if err != nil {
+		return primitive.NilObjectID, false
+	}
+	return id, true
+}
+
+func parseApplicationDeleteIDFromPath(path string) (primitive.ObjectID, bool) {
+	trimmed := strings.Trim(path, "/")
+	parts := strings.Split(trimmed, "/")
+	if len(parts) != 4 {
+		return primitive.NilObjectID, false
+	}
+	if parts[0] != "api" || parts[1] != "rp" || parts[2] != "applications" {
 		return primitive.NilObjectID, false
 	}
 	id, err := primitive.ObjectIDFromHex(parts[3])
