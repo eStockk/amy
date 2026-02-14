@@ -221,6 +221,16 @@ func (h *DiscordAuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		options.Update().SetUpsert(true),
 	)
 
+	_, _ = h.userCollection.UpdateOne(
+		ctx,
+		bson.M{"discordId": user.ID},
+		mongo.Pipeline{
+			{{Key: "$set", Value: bson.M{
+				"createdAt": bson.M{"$ifNull": []any{"$createdAt", time.Now().UTC()}},
+			}}},
+		},
+	)
+
 	setSessionCookie(w, r, h.frontendURL, user.ID)
 
 	redirectTo := h.frontendURL

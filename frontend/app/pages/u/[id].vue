@@ -29,13 +29,11 @@
             <span class="chip" v-else>Minecraft не верифицирован</span>
             <span class="chip" v-if="fullRPName !== 'Не указан'">RP: {{ fullRPName }}</span>
             <span class="chip" v-if="profile.joinedAt">На сайте с {{ formatDate(profile.joinedAt, true) }}</span>
+            <span class="chip" v-else>Дата регистрации обновится после входа</span>
           </div>
 
-          <div class="actions">
-            <button class="ghost" type="button" @click="copyProfileLink">
-              {{ copied ? 'Ссылка скопирована' : 'Копировать ссылку профиля' }}
-            </button>
-            <button v-if="isOwner" class="ghost danger" type="button" @click="logoutAndBack">Выйти</button>
+          <div class="actions" v-if="isOwner">
+            <button class="ghost danger" type="button" @click="logoutAndBack">Выйти</button>
           </div>
         </article>
 
@@ -61,18 +59,6 @@
       </aside>
 
       <div class="right-col">
-        <header class="panel hero-card">
-          <div class="hero-copy">
-            <p class="eyebrow">CentralFlow style</p>
-            <h2>{{ isOwner ? 'Личный кабинет игрока' : `Публичный профиль ${profile.displayName}` }}</h2>
-            <p class="muted">
-              Верификация с сервером происходит по коду после кика. После верификации имя и фамилия из MineRP
-              синхронизируются автоматически.
-            </p>
-          </div>
-          <NuxtLink class="ghost" to="/">На главную</NuxtLink>
-        </header>
-
         <section class="panel info-grid">
           <article class="info-card highlight">
             <p class="label">Аккаунт Minecraft</p>
@@ -224,7 +210,6 @@ const {
 
 const pending = ref(true)
 const errorMessage = ref('')
-const copied = ref(false)
 
 const profile = ref<PublicProfile | null>(null)
 const profileId = computed(() => String(route.params.id || '').trim())
@@ -294,12 +279,6 @@ const progressCompleted = computed(() => {
 
 const progressPercent = computed(() => Math.round((progressCompleted.value / 10) * 100))
 
-const profileLinkAbsolute = computed(() => {
-  if (!profile.value?.id) return ''
-  if (!process.client) return `/u/${profile.value.id}`
-  return `${window.location.origin}/u/${profile.value.id}`
-})
-
 const fillFromCurrentState = (authUser?: AuthUser | null) => {
   if (!authUser) return
 
@@ -353,7 +332,8 @@ const loadProfile = async () => {
         ...response.profile,
         linkedMinecraft: user.value.linkedMinecraft || response.profile.linkedMinecraft,
         rpFirstName: user.value.rpFirstName || response.profile.rpFirstName,
-        rpLastName: user.value.rpLastName || response.profile.rpLastName
+        rpLastName: user.value.rpLastName || response.profile.rpLastName,
+        joinedAt: response.profile.joinedAt
       }
       fillFromCurrentState(user.value)
     }
@@ -363,18 +343,6 @@ const loadProfile = async () => {
     profile.value = null
   } finally {
     pending.value = false
-  }
-}
-
-const copyProfileLink = async () => {
-  copied.value = false
-  if (!process.client || !profileLinkAbsolute.value) return
-
-  try {
-    await navigator.clipboard.writeText(profileLinkAbsolute.value)
-    copied.value = true
-  } catch {
-    copied.value = false
   }
 }
 
@@ -537,23 +505,23 @@ watch(
 .shell {
   display: grid;
   grid-template-columns: minmax(280px, 330px) minmax(0, 1fr);
-  gap: 18px;
+  gap: 16px;
 }
 
 .left-col,
 .right-col {
   display: grid;
-  gap: 14px;
+  gap: 12px;
   align-content: start;
 }
 
 .panel {
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(228, 94, 56, 0.22);
   border-radius: 10px;
-  background: radial-gradient(100% 120% at 10% 0%, rgba(150, 118, 248, 0.16), transparent 60%),
-    linear-gradient(165deg, rgba(20, 20, 32, 0.95), rgba(11, 12, 20, 0.98));
+  background: radial-gradient(circle at top left, rgba(228, 94, 56, 0.12), transparent 45%),
+    linear-gradient(165deg, rgba(24, 18, 16, 0.95), rgba(13, 12, 17, 0.98));
   backdrop-filter: blur(8px);
-  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.36);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.38);
 }
 
 .state-card {
@@ -561,25 +529,31 @@ watch(
   width: min(620px, 100%);
   display: grid;
   gap: 10px;
-  padding: 28px;
+  padding: 20px;
+}
+
+.identity-card,
+.summary-card,
+.verify-card,
+.application-card {
+  padding: 14px;
 }
 
 .identity-card {
-  padding: 18px;
   display: grid;
   gap: 10px;
 }
 
 .avatar-box {
   position: relative;
-  width: 88px;
-  height: 88px;
+  width: 84px;
+  height: 84px;
 }
 
 .avatar {
-  width: 88px;
-  height: 88px;
-  border-radius: 12px;
+  width: 84px;
+  height: 84px;
+  border-radius: 10px;
   object-fit: cover;
   border: 1px solid rgba(255, 255, 255, 0.24);
   background: rgba(255, 255, 255, 0.08);
@@ -589,20 +563,20 @@ watch(
   position: absolute;
   right: -2px;
   bottom: -2px;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: #36ef88;
   border: 3px solid #171a26;
-  box-shadow: 0 0 12px rgba(54, 239, 136, 0.55);
+  box-shadow: 0 0 10px rgba(54, 239, 136, 0.5);
 }
 
 .eyebrow {
   margin: 0;
   font-size: 12px;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: rgba(255, 255, 255, 0.72);
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.75);
 }
 
 h1,
@@ -613,11 +587,7 @@ p {
 }
 
 h1 {
-  font-size: clamp(24px, 3vw, 34px);
-}
-
-h2 {
-  font-size: clamp(20px, 3vw, 30px);
+  font-size: clamp(26px, 3vw, 36px);
 }
 
 .muted {
@@ -637,8 +607,8 @@ h2 {
 .chip {
   border-radius: 999px;
   padding: 6px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
   font-size: 12px;
 }
 
@@ -648,59 +618,45 @@ h2 {
 }
 
 .summary-card {
-  padding: 14px 16px;
-  display: grid;
-  gap: 8px;
-}
-
-.hero-card {
-  padding: 18px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
-}
-
-.hero-copy {
   display: grid;
   gap: 8px;
 }
 
 .info-grid {
-  padding: 14px;
+  padding: 12px;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
 .info-card {
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.03);
-  padding: 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 12px;
   display: grid;
   gap: 8px;
 }
 
 .info-card.highlight {
-  background: linear-gradient(145deg, rgba(157, 118, 248, 0.25), rgba(12, 13, 22, 0.95));
+  background: linear-gradient(145deg, rgba(228, 94, 56, 0.22), rgba(20, 16, 16, 0.95));
+  border-color: rgba(228, 94, 56, 0.34);
 }
 
 .label {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: rgba(255, 255, 255, 0.68);
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .info-card strong {
-  font-size: 21px;
+  font-size: 24px;
   font-family: 'Neue Machine', 'Montserrat', sans-serif;
 }
 
 .verify-card,
 .application-card {
-  padding: 16px;
   display: grid;
   gap: 12px;
 }
@@ -714,9 +670,9 @@ h2 {
 
 .badge {
   border-radius: 999px;
-  border: 1px solid rgba(157, 118, 248, 0.36);
-  background: rgba(157, 118, 248, 0.16);
-  color: #e2d5ff;
+  border: 1px solid rgba(228, 94, 56, 0.45);
+  background: rgba(228, 94, 56, 0.16);
+  color: #ffd4c8;
   font-size: 11px;
   padding: 6px 10px;
 }
@@ -733,7 +689,7 @@ h2 {
   display: block;
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, #9d76f8, #cf89ff);
+  background: linear-gradient(90deg, #e45e38, #b8432c);
   transition: width 0.25s ease;
 }
 
@@ -760,7 +716,7 @@ label span {
 input,
 textarea {
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   background: rgba(255, 255, 255, 0.05);
   color: var(--text);
   padding: 10px 12px;
@@ -799,52 +755,88 @@ textarea {
 
 .ghost {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.07);
-  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
 }
 
 .ghost.danger {
-  color: #ffbaa9;
-  border-color: rgba(228, 94, 56, 0.42);
-  background: rgba(228, 94, 56, 0.16);
+  color: #ffd3c9;
+  border-color: rgba(228, 94, 56, 0.5);
+  background: rgba(228, 94, 56, 0.15);
 }
 
 .primary {
-  color: #0b0b0f;
+  color: #0f0f12;
   background-image: linear-gradient(135deg, var(--accent), var(--accent-2));
 }
 
 .status {
-  color: #8af4ad;
+  color: #9ff4be;
 }
 
 .status.error {
   color: #ff9f9f;
 }
 
-@media (max-width: 1080px) {
+@media (max-width: 1100px) {
   .shell {
     grid-template-columns: 1fr;
   }
 }
 
-@media (max-width: 760px) {
-  .hero-card {
-    flex-direction: column;
-    align-items: flex-start;
+@media (max-width: 900px) {
+  .profile-page {
+    min-height: auto;
   }
 
   .info-grid,
-  .form-grid {
-    grid-template-columns: 1fr;
-  }
-
+  .form-grid,
   .row {
     grid-template-columns: 1fr;
   }
+
+  .actions-row {
+    align-items: stretch;
+  }
+
+  .actions-row .primary {
+    width: 100%;
+  }
+
+  .section-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 640px) {
+  .left-col,
+  .right-col {
+    gap: 10px;
+  }
+
+  .identity-card,
+  .summary-card,
+  .verify-card,
+  .application-card,
+  .info-grid {
+    padding: 12px;
+  }
+
+  h1 {
+    font-size: 30px;
+  }
+
+  .chips {
+    gap: 6px;
+  }
+
+  .chip {
+    font-size: 11px;
+  }
+
+  label span {
+    font-size: 12px;
+  }
 }
 </style>
-
-
-
-

@@ -307,33 +307,33 @@ func (h *DiscordAuthHandler) sendRPApplicationWebhook(doc rpApplicationDoc, user
 	rejectURL := h.moderationURL(doc.ID.Hex(), "reject", doc.ModerationToken)
 
 	embed := map[string]any{
-		"title":       "RP application: " + doc.Nickname,
-		"description": "New RP application submitted on Amy website.",
+		"title":       "Новая RP-заявка: " + doc.Nickname,
+		"description": "Пользователь отправил RP-заявку через сайт Amy.",
 		"color":       14901048,
 		"fields": []map[string]string{
-			{"name": "Discord", "value": user.Username + " (" + user.DiscordID + ")"},
-			{"name": "In-game nickname", "value": safeValue(doc.Nickname)},
-			{"name": "Source", "value": safeValue(doc.Source)},
-			{"name": "RP first/last name", "value": safeValue(doc.RPName)},
-			{"name": "Birth date", "value": safeValue(doc.BirthDate)},
-			{"name": "Race", "value": safeValue(doc.Race)},
-			{"name": "Gender", "value": safeValue(doc.Gender)},
-			{"name": "Skills", "value": trimForDiscord(doc.Skills)},
-			{"name": "Character plan", "value": trimForDiscord(doc.Plan)},
-			{"name": "Biography", "value": trimForDiscord(doc.Biography)},
-			{"name": "Skin URL", "value": safeValue(doc.SkinURL)},
+			{"name": "Discord аккаунт", "value": user.Username + " (" + user.DiscordID + ")"},
+			{"name": "Ник в игре", "value": safeValue(doc.Nickname)},
+			{"name": "Откуда узнал о сервере", "value": safeValue(doc.Source)},
+			{"name": "Имя и фамилия", "value": safeValue(doc.RPName)},
+			{"name": "Дата рождения", "value": safeValue(doc.BirthDate)},
+			{"name": "Раса", "value": safeValue(doc.Race)},
+			{"name": "Пол", "value": safeValue(doc.Gender)},
+			{"name": "Ключевые навыки", "value": trimForDiscord(doc.Skills)},
+			{"name": "План развития", "value": trimForDiscord(doc.Plan)},
+			{"name": "Биография", "value": trimForDiscord(doc.Biography)},
+			{"name": "Ссылка на скин", "value": safeValue(doc.SkinURL)},
 		},
 	}
 
 	body := map[string]any{
-		"content": "New RP application. Choose moderation action:",
+		"content": "Поступила новая RP-заявка. Выберите действие:",
 		"embeds":  []any{embed},
 		"components": []any{
 			map[string]any{
 				"type": 1,
 				"components": []any{
-					map[string]any{"type": 2, "style": 5, "label": "Approve", "url": approveURL},
-					map[string]any{"type": 2, "style": 5, "label": "Reject", "url": rejectURL},
+					map[string]any{"type": 2, "style": 5, "label": "Одобрить", "url": approveURL},
+					map[string]any{"type": 2, "style": 5, "label": "Отклонить", "url": rejectURL},
 				},
 			},
 		},
@@ -552,11 +552,11 @@ func randomHex(size int) string {
 
 func (h *DiscordAuthHandler) writeModerationHTML(w http.ResponseWriter, app rpApplicationDoc, action string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	statusText := "Application already processed"
+	statusText := "Заявка уже обработана"
 	if action == "approve" {
-		statusText = "Application approved"
+		statusText = "Заявка одобрена"
 	} else if action == "reject" {
-		statusText = "Application rejected"
+		statusText = "Заявка отклонена"
 	}
 
 	html := fmt.Sprintf(`<!doctype html>
@@ -573,8 +573,8 @@ func (h *DiscordAuthHandler) writeModerationHTML(w http.ResponseWriter, app rpAp
   <body>
     <div class="card">
       <h1>%s</h1>
-      <p class="muted">Nickname: %s</p>
-      <p class="muted">Status: %s</p>
+      <p class="muted">Ник: %s</p>
+      <p class="muted">Статус: %s</p>
     </div>
   </body>
 </html>`, statusText, statusText, app.Nickname, app.Status)
