@@ -180,7 +180,7 @@ const isEmpty = computed(() => !pending.value && news.value.length === 0)
 .empty-icon {
   width: 42px;
   height: 42px;
-  border-radius: 14px;
+  border-radius: 9px;
   display: grid;
   place-items: center;
   background: rgba(255, 255, 255, 0.06);
@@ -221,7 +221,7 @@ const isEmpty = computed(() => !pending.value && news.value.length === 0)
 
 .discord-card {
   padding: 16px;
-  border-radius: 16px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
   display: grid;
@@ -256,7 +256,7 @@ const isEmpty = computed(() => !pending.value && news.value.length === 0)
 .socials a {
   width: 36px;
   height: 36px;
-  border-radius: 12px;
+  border-radius: 8px;
   display: grid;
   place-items: center;
   background: rgba(255, 255, 255, 0.06);
@@ -279,7 +279,7 @@ const isEmpty = computed(() => !pending.value && news.value.length === 0)
 .footer-logo {
   width: 96px;
   height: 96px;
-  border-radius: 18px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.1);
   display: grid;
@@ -305,7 +305,7 @@ const isEmpty = computed(() => !pending.value && news.value.length === 0)
 
 .badge {
   padding: 10px 12px;
-  border-radius: 12px;
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: var(--text);

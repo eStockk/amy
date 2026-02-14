@@ -96,7 +96,7 @@ const submit = async () => {
 .auth-card {
   background: rgba(20, 20, 26, 0.92);
   color: var(--text);
-  border-radius: 18px;
+  border-radius: 10px;
   padding: 28px;
   display: grid;
   gap: 20px;
@@ -144,7 +144,7 @@ label {
 
 input {
   border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 10px;
+  border-radius: 8px;
   padding: 10px 12px;
   font-size: 14px;
   background: rgba(255, 255, 255, 0.04);
@@ -179,7 +179,7 @@ input:focus {
 
 .primary {
   border: none;
-  border-radius: 10px;
+  border-radius: 8px;
   padding: 12px 16px;
   background: #E45E38;
   color: #fff;
@@ -215,7 +215,7 @@ input:focus {
 
 .side-card {
   padding: 18px 20px;
-  border-radius: 16px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: #d7d7e0;

@@ -101,7 +101,7 @@ const submit = async () => {
   width: min(92vw, 520px);
   background: linear-gradient(160deg, rgba(28, 28, 36, 0.96), rgba(17, 17, 24, 0.95));
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 24px;
+  border-radius: 12px;
   padding: 24px;
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
   display: grid;
@@ -115,7 +115,7 @@ const submit = async () => {
   right: 14px;
   width: 32px;
   height: 32px;
-  border-radius: 10px;
+  border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.08);
   color: var(--text);
@@ -144,7 +144,7 @@ select,
 textarea {
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 10px 12px;
   color: var(--text);
 }

@@ -160,7 +160,7 @@ watch(
   left: 0;
   width: 32px;
   height: 32px;
-  border-radius: 10px;
+  border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.18);
   background: rgba(255, 255, 255, 0.08);
   color: var(--text);
@@ -170,7 +170,7 @@ watch(
 .logo-mark {
   width: 40px;
   height: 40px;
-  border-radius: 14px;
+  border-radius: 9px;
   display: grid;
   place-items: center;
   background: rgba(255, 255, 255, 0.06);
@@ -205,7 +205,7 @@ watch(
 .nav-link {
   text-decoration: none;
   padding: 10px 12px;
-  border-radius: 14px;
+  border-radius: 9px;
   color: var(--muted);
   display: flex;
   align-items: center;
@@ -229,7 +229,7 @@ watch(
 .icon {
   width: 32px;
   height: 32px;
-  border-radius: 12px;
+  border-radius: 8px;
   display: grid;
   place-items: center;
   color: rgba(255, 255, 255, 0.85);
@@ -263,7 +263,7 @@ watch(
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
-  border-radius: 16px;
+  border-radius: 10px;
   border: 1px solid var(--stroke);
   background: var(--panel);
   text-decoration: none;
@@ -273,7 +273,7 @@ watch(
 .user-avatar {
   width: 42px;
   height: 42px;
-  border-radius: 14px;
+  border-radius: 9px;
   object-fit: cover;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.14);

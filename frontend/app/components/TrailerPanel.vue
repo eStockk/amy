@@ -27,7 +27,7 @@ h3 {
 
 .video {
   height: 180px;
-  border-radius: 16px;
+  border-radius: 10px;
   background: linear-gradient(135deg, #2d3141, #4a3c5e);
   display: grid;
   place-items: center;

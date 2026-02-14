@@ -41,7 +41,7 @@ onMounted(async () => {
   display: grid;
   gap: 12px;
   padding: 28px;
-  border-radius: 18px;
+  border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(15, 17, 27, 0.92);
 }

@@ -21,9 +21,9 @@
   --stroke: rgba(255, 255, 255, 0.08);
   --glass: rgba(255, 255, 255, 0.05);
   --shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
-  --radius-lg: 28px;
-  --radius-md: 18px;
-  --radius-sm: 12px;
+  --radius-lg: 12px;
+  --radius-md: 10px;
+  --radius-sm: 8px;
 }
 
 *,

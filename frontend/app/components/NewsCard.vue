@@ -92,7 +92,7 @@ p {
 
 .media {
   height: 140px;
-  border-radius: 14px;
+  border-radius: 9px;
   background: linear-gradient(135deg, #725c74, #d59abf);
 }
 

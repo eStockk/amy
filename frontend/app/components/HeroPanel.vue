@@ -144,7 +144,7 @@ h1 {
   width: 240px;
   height: 240px;
   object-fit: contain;
-  border-radius: 28px;
+  border-radius: 12px;
   filter: drop-shadow(0 18px 32px rgba(0, 0, 0, 0.45));
   transform: rotate(-3deg);
   animation: floaty 5s ease-in-out infinite;

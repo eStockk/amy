@@ -514,7 +514,7 @@ watch(
 
 .panel {
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 20px;
+  border-radius: 10px;
   background: radial-gradient(100% 120% at 10% 0%, rgba(150, 118, 248, 0.16), transparent 60%),
     linear-gradient(165deg, rgba(20, 20, 32, 0.95), rgba(11, 12, 20, 0.98));
   backdrop-filter: blur(8px);
@@ -544,7 +544,7 @@ watch(
 .avatar {
   width: 88px;
   height: 88px;
-  border-radius: 24px;
+  border-radius: 12px;
   object-fit: cover;
   border: 1px solid rgba(255, 255, 255, 0.24);
   background: rgba(255, 255, 255, 0.08);
@@ -639,7 +639,7 @@ h2 {
 }
 
 .info-card {
-  border-radius: 16px;
+  border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.03);
   padding: 14px;
@@ -724,7 +724,7 @@ label span {
 
 input,
 textarea {
-  border-radius: 12px;
+  border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.15);
   background: rgba(255, 255, 255, 0.05);
   color: var(--text);
