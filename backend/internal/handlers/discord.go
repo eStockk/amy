@@ -24,6 +24,7 @@ type DiscordAuthHandler struct {
 	frontendURL          string
 	ticketWebhookURL     string
 	rpWebhookURL         string
+	rpModeratorIDs       map[string]struct{}
 	minecraftServerToken string
 	userCollection       *mongo.Collection
 	rpCollection         *mongo.Collection
@@ -117,6 +118,7 @@ func NewDiscordAuthHandler(
 	frontendURL,
 	ticketWebhookURL,
 	rpWebhookURL,
+	rpModeratorIDsRaw,
 	minecraftServerToken string,
 ) *DiscordAuthHandler {
 	return &DiscordAuthHandler{
@@ -126,6 +128,7 @@ func NewDiscordAuthHandler(
 		frontendURL:          frontendURL,
 		ticketWebhookURL:     ticketWebhookURL,
 		rpWebhookURL:         rpWebhookURL,
+		rpModeratorIDs:       parseDiscordIDSet(rpModeratorIDsRaw),
 		minecraftServerToken: minecraftServerToken,
 		userCollection:       db.Collection("discord_users"),
 		rpCollection:         db.Collection("rp_applications"),
@@ -478,4 +481,224 @@ func (h *DiscordAuthHandler) earliestKnownJoinAt(ctx context.Context, discordID 
 	}
 
 	return earliest
+}
+
+func parseDiscordIDSet(raw string) map[string]struct{} {
+	result := make(map[string]struct{})
+	for _, part := range strings.Split(raw, ",") {
+		id := strings.TrimSpace(part)
+		if id == "" {
+			continue
+		}
+		result[id] = struct{}{}
+	}
+	return result
+}
+
+func (h *DiscordAuthHandler) isRPModerator(discordID string) bool {
+	discordID = strings.TrimSpace(discordID)
+	if discordID == "" {
+		return false
+	}
+	if len(h.rpModeratorIDs) == 0 {
+		return false
+	}
+	_, ok := h.rpModeratorIDs[discordID]
+	return ok
+}
+
+func (h *DiscordAuthHandler) RunMigrations(ctx context.Context) error {
+	if err := h.ensureMigrationIndexes(ctx); err != nil {
+		return err
+	}
+
+	if err := h.migrateRPStatuses(ctx); err != nil {
+		return err
+	}
+
+	cursor, err := h.userCollection.Find(ctx, bson.M{}, options.Find().SetProjection(bson.M{
+		"discordId": 1,
+		"createdAt": 1,
+	}))
+	if err != nil {
+		return err
+	}
+	defer cursor.Close(ctx)
+
+	for cursor.Next(ctx) {
+		var user discordUserDoc
+		if err := cursor.Decode(&user); err != nil {
+			return err
+		}
+
+		if strings.TrimSpace(user.DiscordID) == "" {
+			continue
+		}
+
+		current := user.CreatedAt
+		target := current
+
+		if target.IsZero() && !user.ID.IsZero() {
+			target = user.ID.Timestamp().UTC()
+		}
+
+		if earliest := h.earliestKnownJoinAt(ctx, user.DiscordID); earliest != nil {
+			if target.IsZero() || earliest.Before(target) {
+				target = *earliest
+			}
+		}
+
+		if target.IsZero() {
+			continue
+		}
+
+		if !current.IsZero() && (current.Equal(target) || current.Before(target)) {
+			continue
+		}
+
+		_, err = h.userCollection.UpdateOne(
+			ctx,
+			bson.M{"discordId": user.DiscordID},
+			bson.M{"$set": bson.M{"createdAt": target}},
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	return cursor.Err()
+}
+
+func (h *DiscordAuthHandler) ensureMigrationIndexes(ctx context.Context) error {
+	if h.userCollection != nil {
+		_, err := h.userCollection.Indexes().CreateOne(ctx, mongo.IndexModel{
+			Keys:    bson.D{{Key: "discordId", Value: 1}},
+			Options: options.Index().SetUnique(true).SetName("discord_users_discordId_unique"),
+		})
+		if err := ignoreIndexConflict(err); err != nil {
+			return err
+		}
+	}
+
+	if h.rpCollection != nil {
+		_, err := h.rpCollection.Indexes().CreateOne(ctx, mongo.IndexModel{
+			Keys:    bson.D{{Key: "discordId", Value: 1}, {Key: "createdAt", Value: -1}},
+			Options: options.Index().SetName("rp_applications_discordId_createdAt"),
+		})
+		if err := ignoreIndexConflict(err); err != nil {
+			return err
+		}
+
+		_, err = h.rpCollection.Indexes().CreateOne(ctx, mongo.IndexModel{
+			Keys:    bson.D{{Key: "status", Value: 1}, {Key: "updatedAt", Value: -1}},
+			Options: options.Index().SetName("rp_applications_status_updatedAt"),
+		})
+		if err := ignoreIndexConflict(err); err != nil {
+			return err
+		}
+	}
+
+	if h.codeCollection != nil {
+		_, err := h.codeCollection.Indexes().CreateOne(ctx, mongo.IndexModel{
+			Keys:    bson.D{{Key: "discordId", Value: 1}, {Key: "createdAt", Value: -1}},
+			Options: options.Index().SetName("verification_codes_discordId_createdAt"),
+		})
+		if err := ignoreIndexConflict(err); err != nil {
+			return err
+		}
+
+		_, err = h.codeCollection.Indexes().CreateOne(ctx, mongo.IndexModel{
+			Keys:    bson.D{{Key: "code", Value: 1}},
+			Options: options.Index().SetName("verification_codes_code"),
+		})
+		if err := ignoreIndexConflict(err); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func ignoreIndexConflict(err error) error {
+	if err == nil {
+		return nil
+	}
+	lower := strings.ToLower(err.Error())
+	if strings.Contains(lower, "already exists") || strings.Contains(lower, "indexoptionsconflict") || strings.Contains(lower, "index key specs conflict") {
+		return nil
+	}
+	return err
+}
+
+func (h *DiscordAuthHandler) migrateRPStatuses(ctx context.Context) error {
+	type rpMigrationDoc struct {
+		ID              primitive.ObjectID `bson:"_id"`
+		Status          string             `bson:"status"`
+		ModerationToken string             `bson:"moderationToken"`
+		ModeratedAt     *time.Time         `bson:"moderatedAt,omitempty"`
+		CreatedAt       time.Time          `bson:"createdAt,omitempty"`
+		UpdatedAt       time.Time          `bson:"updatedAt,omitempty"`
+	}
+
+	cursor, err := h.rpCollection.Find(ctx, bson.M{}, options.Find().SetProjection(bson.M{
+		"status":          1,
+		"moderationToken": 1,
+		"moderatedAt":     1,
+		"createdAt":       1,
+		"updatedAt":       1,
+	}))
+	if err != nil {
+		return err
+	}
+	defer cursor.Close(ctx)
+
+	for cursor.Next(ctx) {
+		var doc rpMigrationDoc
+		if err := cursor.Decode(&doc); err != nil {
+			return err
+		}
+
+		nextStatus := normalizedStatus(doc.Status)
+		if nextStatus == "" {
+			nextStatus = "pending"
+		}
+		setPayload := bson.M{}
+
+		if nextStatus != doc.Status {
+			setPayload["status"] = nextStatus
+		}
+
+		if nextStatus == "pending" {
+			if strings.TrimSpace(doc.ModerationToken) == "" {
+				setPayload["moderationToken"] = randomHex(20)
+			}
+			if doc.ModeratedAt != nil {
+				setPayload["moderatedAt"] = nil
+			}
+		} else if (nextStatus == "accepted" || nextStatus == "canceled") && doc.ModeratedAt == nil {
+			moderatedAt := doc.UpdatedAt.UTC()
+			if moderatedAt.IsZero() {
+				moderatedAt = doc.CreatedAt.UTC()
+			}
+			if moderatedAt.IsZero() {
+				moderatedAt = time.Now().UTC()
+			}
+			setPayload["moderatedAt"] = moderatedAt
+		}
+
+		if len(setPayload) == 0 {
+			continue
+		}
+
+		if _, hasUpdatedAt := setPayload["updatedAt"]; !hasUpdatedAt {
+			setPayload["updatedAt"] = time.Now().UTC()
+		}
+
+		_, err = h.rpCollection.UpdateByID(ctx, doc.ID, bson.M{"$set": setPayload})
+		if err != nil {
+			return err
+		}
+	}
+
+	return cursor.Err()
 }

@@ -45,8 +45,15 @@ func main() {
 		cfg.FrontendURL,
 		cfg.DiscordTicketWebhook,
 		cfg.DiscordRPWebhook,
+		cfg.RPModeratorIDs,
 		cfg.MinecraftServerToken,
 	)
+
+	migrationCtx, migrationCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	if err := discordHandler.RunMigrations(migrationCtx); err != nil {
+		log.Printf("discord migrations failed: %v", err)
+	}
+	migrationCancel()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/health", healthHandler.Handle)

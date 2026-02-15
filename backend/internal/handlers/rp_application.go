@@ -88,15 +88,19 @@ func (h *DiscordAuthHandler) SubmitRPApplication(w http.ResponseWriter, r *http.
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
 
-	pendingFilter := bson.M{"discordId": user.DiscordID, "status": "pending"}
-	var pendingApplication rpApplicationDoc
-	err = h.rpCollection.FindOne(ctx, pendingFilter, options.FindOne().SetSort(bson.D{{Key: "createdAt", Value: -1}})).Decode(&pendingApplication)
-	if err == nil {
-		writeError(w, http.StatusConflict, "pending rp application already exists")
+	if hasAccepted, err := h.hasAcceptedApplication(ctx, user.DiscordID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to check current applications")
+		return
+	} else if hasAccepted {
+		writeError(w, http.StatusConflict, "application is already accepted")
 		return
 	}
-	if err != nil && err != mongo.ErrNoDocuments {
+
+	if hasPending, err := h.hasPendingApplication(ctx, user.DiscordID); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to check current applications")
+		return
+	} else if hasPending {
+		writeError(w, http.StatusConflict, "pending rp application already exists")
 		return
 	}
 
@@ -168,8 +172,8 @@ func (h *DiscordAuthHandler) ModerateRPApplication(w http.ResponseWriter, r *htt
 		return
 	}
 
-	action := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
-	if action != "approve" && action != "reject" {
+	action := normalizeModerationAction(r.URL.Query().Get("action"))
+	if action == "" {
 		writeError(w, http.StatusBadRequest, "invalid action")
 		return
 	}
@@ -180,11 +184,21 @@ func (h *DiscordAuthHandler) ModerateRPApplication(w http.ResponseWriter, r *htt
 		return
 	}
 
+	moderator, err := h.requireAuthenticatedUser(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "moderator auth required")
+		return
+	}
+	if !h.isRPModerator(moderator.DiscordID) {
+		writeError(w, http.StatusForbidden, "moderator access required")
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
 
 	var current rpApplicationDoc
-	err := h.rpCollection.FindOne(ctx, bson.M{"_id": applicationID}).Decode(&current)
+	err = h.rpCollection.FindOne(ctx, bson.M{"_id": applicationID}).Decode(&current)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			writeError(w, http.StatusNotFound, "application not found")
@@ -199,30 +213,44 @@ func (h *DiscordAuthHandler) ModerateRPApplication(w http.ResponseWriter, r *htt
 		return
 	}
 
-	if current.Status != "pending" {
+	currentStatus := normalizedStatus(current.Status)
+	nextStatus, allowed := nextStatusByAction(currentStatus, action)
+	if !allowed {
 		h.writeModerationHTML(w, current, "already-processed")
 		return
 	}
 
 	now := time.Now().UTC()
-	newStatus := "rejected"
-	if action == "approve" {
-		newStatus = "approved"
+	newToken := current.ModerationToken
+	setPayload := bson.M{
+		"status":    nextStatus,
+		"updatedAt": now,
+	}
+	if nextStatus == "pending" {
+		newToken = randomHex(20)
+		setPayload["moderationToken"] = newToken
+		setPayload["moderatedAt"] = nil
+		current.ModeratedAt = nil
+	} else {
+		setPayload["moderatedAt"] = now
+		current.ModeratedAt = &now
 	}
 
-	_, err = h.rpCollection.UpdateByID(ctx, applicationID, bson.M{"$set": bson.M{
-		"status":      newStatus,
-		"moderatedAt": now,
-		"updatedAt":   now,
-	}})
+	_, err = h.rpCollection.UpdateByID(ctx, applicationID, bson.M{"$set": setPayload})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to moderate application")
 		return
 	}
 
-	current.Status = newStatus
-	current.ModeratedAt = &now
+	current.Status = nextStatus
 	current.UpdatedAt = now
+	current.ModerationToken = newToken
+
+	if updateErr := h.updateRPApplicationDiscordMessage(current); updateErr != nil {
+		writeError(w, http.StatusBadGateway, "failed to update discord ticket")
+		return
+	}
+
 	h.writeModerationHTML(w, current, action)
 }
 
@@ -255,6 +283,11 @@ func (h *DiscordAuthHandler) DeleteRPApplication(w http.ResponseWriter, r *http.
 
 	if application.DiscordID != user.DiscordID {
 		writeError(w, http.StatusForbidden, "you can delete only your own application")
+		return
+	}
+
+	if normalizedStatus(application.Status) == "accepted" {
+		writeError(w, http.StatusConflict, "accepted application cannot be deleted")
 		return
 	}
 
@@ -303,43 +336,8 @@ func (h *DiscordAuthHandler) sendRPApplicationWebhook(doc rpApplicationDoc, user
 		return "", nil
 	}
 
-	approveURL := h.moderationURL(doc.ID.Hex(), "approve", doc.ModerationToken)
-	rejectURL := h.moderationURL(doc.ID.Hex(), "reject", doc.ModerationToken)
-
-	embed := map[string]any{
-		"title":       "Новая RP-заявка: " + doc.Nickname,
-		"description": "Игрок отправил RP-анкету через сайт Amy.",
-		"color":       14901048,
-		"fields": []map[string]string{
-			{"name": "Discord аккаунт", "value": user.Username + " (" + user.DiscordID + ")"},
-			{"name": "Ник в игре", "value": safeValue(doc.Nickname)},
-			{"name": "Откуда узнал о сервере", "value": safeValue(doc.Source)},
-			{"name": "Имя и фамилия", "value": safeValue(doc.RPName)},
-			{"name": "Дата рождения", "value": safeValue(doc.BirthDate)},
-			{"name": "Раса", "value": safeValue(doc.Race)},
-			{"name": "Пол", "value": safeValue(doc.Gender)},
-			{"name": "Ключевые навыки", "value": trimForDiscord(doc.Skills)},
-			{"name": "План развития", "value": trimForDiscord(doc.Plan)},
-			{"name": "Биография", "value": trimForDiscord(doc.Biography)},
-			{"name": "Ссылка на скин", "value": safeValue(doc.SkinURL)},
-		},
-	}
-
-	body := map[string]any{
-		"content": "Поступила новая RP-заявка. Выберите действие:",
-		"embeds":  []any{embed},
-		"components": []any{
-			map[string]any{
-				"type": 1,
-				"components": []any{
-					map[string]any{"type": 2, "style": 5, "label": "Одобрить", "url": approveURL},
-					map[string]any{"type": 2, "style": 5, "label": "Отклонить", "url": rejectURL},
-				},
-			},
-		},
-	}
-
-	raw, err := json.Marshal(body)
+	payload := h.buildRPApplicationDiscordPayload(doc, user)
+	raw, err := json.Marshal(payload)
 	if err != nil {
 		return "", err
 	}
@@ -429,6 +427,204 @@ func (h *DiscordAuthHandler) moderationURL(applicationID, action, token string) 
 		base = "http://localhost:8080"
 	}
 	return fmt.Sprintf("%s/api/rp/applications/%s/moderate?action=%s&token=%s", base, applicationID, action, url.QueryEscape(token))
+}
+
+func (h *DiscordAuthHandler) hasPendingApplication(ctx context.Context, discordID string) (bool, error) {
+	count, err := h.rpCollection.CountDocuments(ctx, bson.M{"discordId": discordID, "status": "pending"})
+	return count > 0, err
+}
+
+func (h *DiscordAuthHandler) hasAcceptedApplication(ctx context.Context, discordID string) (bool, error) {
+	count, err := h.rpCollection.CountDocuments(ctx, bson.M{
+		"discordId": discordID,
+		"status":    bson.M{"$in": []string{"accepted", "approved"}},
+	})
+	return count > 0, err
+}
+
+func normalizedStatus(status string) string {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "approved":
+		return "accepted"
+	case "rejected":
+		return "canceled"
+	default:
+		return strings.ToLower(strings.TrimSpace(status))
+	}
+}
+
+func normalizeModerationAction(raw string) string {
+	action := strings.ToLower(strings.TrimSpace(raw))
+	switch action {
+	case "approve":
+		return "accept"
+	case "reject":
+		return "cancel"
+	case "accept", "cancel", "reconsider":
+		return action
+	default:
+		return ""
+	}
+}
+
+func nextStatusByAction(currentStatus, action string) (string, bool) {
+	switch action {
+	case "accept":
+		if currentStatus != "pending" {
+			return "", false
+		}
+		return "accepted", true
+	case "cancel":
+		if currentStatus != "pending" {
+			return "", false
+		}
+		return "canceled", true
+	case "reconsider":
+		if currentStatus != "accepted" {
+			return "", false
+		}
+		return "pending", true
+	default:
+		return "", false
+	}
+}
+
+func (h *DiscordAuthHandler) buildRPApplicationDiscordPayload(doc rpApplicationDoc, user *discordUserDoc) map[string]any {
+	status := normalizedStatus(doc.Status)
+	statusText := map[string]string{
+		"pending":  "\u041d\u0430 \u0440\u0430\u0441\u0441\u043c\u043e\u0442\u0440\u0435\u043d\u0438\u0438",
+		"accepted": "\u041f\u0440\u0438\u043d\u044f\u0442\u0430",
+		"canceled": "\u041e\u0442\u043c\u0435\u043d\u0435\u043d\u0430",
+	}[status]
+	if statusText == "" {
+		statusText = doc.Status
+	}
+
+	discordAccount := doc.DiscordID
+	if user != nil {
+		discordAccount = user.Username + " (" + user.DiscordID + ")"
+	}
+
+	embed := map[string]any{
+		"title":       "\u0052\u0050-\u0437\u0430\u044f\u0432\u043a\u0430: " + doc.Nickname,
+		"description": "\u0421\u0442\u0430\u0442\u0443\u0441 \u0437\u0430\u044f\u0432\u043a\u0438: " + statusText,
+		"color":       14901048,
+		"fields": []map[string]string{
+			{"name": "Discord \u0430\u043a\u043a\u0430\u0443\u043d\u0442", "value": safeValue(discordAccount)},
+			{"name": "\u041d\u0438\u043a \u0432 \u0438\u0433\u0440\u0435", "value": safeValue(doc.Nickname)},
+			{"name": "\u041e\u0442\u043a\u0443\u0434\u0430 \u0443\u0437\u043d\u0430\u043b \u0438 \u043e \u0441\u0435\u0440\u0432\u0435\u0440\u0435", "value": safeValue(doc.Source)},
+			{"name": "\u0418\u043c\u044f \u0438 \u0444\u0430\u043c\u0438\u043b\u0438\u044f", "value": safeValue(doc.RPName)},
+			{"name": "\u0414\u0430\u0442\u0430 \u0440\u043e\u0436\u0434\u0435\u043d\u0438\u044f", "value": safeValue(doc.BirthDate)},
+			{"name": "\u0420\u0430\u0441\u0430", "value": safeValue(doc.Race)},
+			{"name": "\u041f\u043e\u043b", "value": safeValue(doc.Gender)},
+			{"name": "\u041a\u043b\u044e\u0447\u0435\u0432\u044b\u0435 \u043d\u0430\u0432\u044b\u043a\u0438", "value": trimForDiscord(doc.Skills)},
+			{"name": "\u041f\u043b\u0430\u043d \u0440\u0430\u0437\u0432\u0438\u0442\u0438\u044f", "value": trimForDiscord(doc.Plan)},
+			{"name": "\u0411\u0438\u043e\u0433\u0440\u0430\u0444\u0438\u044f", "value": trimForDiscord(doc.Biography)},
+			{"name": "\u0421\u0441\u044b\u043b\u043a\u0430 \u043d\u0430 \u0441\u043a\u0438\u043d", "value": safeValue(doc.SkinURL)},
+		},
+	}
+
+	payload := map[string]any{
+		"content": "\u0052\u0050-\u0442\u0438\u043a\u0435\u0442 \u0438\u0433\u0440\u043e\u043a\u0430 " + doc.Nickname,
+		"embeds":  []any{embed},
+	}
+
+	components := h.rpDiscordComponents(doc)
+	if len(components) > 0 {
+		payload["components"] = components
+	}
+
+	return payload
+}
+
+func (h *DiscordAuthHandler) rpDiscordComponents(doc rpApplicationDoc) []any {
+	status := normalizedStatus(doc.Status)
+
+	switch status {
+	case "pending":
+		acceptURL := h.moderationURL(doc.ID.Hex(), "accept", doc.ModerationToken)
+		cancelURL := h.moderationURL(doc.ID.Hex(), "cancel", doc.ModerationToken)
+		return []any{
+			map[string]any{
+				"type": 1,
+				"components": []any{
+					map[string]any{"type": 2, "style": 5, "label": "\u041f\u0440\u0438\u043d\u044f\u0442\u044c", "url": acceptURL},
+					map[string]any{"type": 2, "style": 5, "label": "\u041e\u0442\u043c\u0435\u043d\u0438\u0442\u044c", "url": cancelURL},
+				},
+			},
+		}
+	case "accepted":
+		reconsiderURL := h.moderationURL(doc.ID.Hex(), "reconsider", doc.ModerationToken)
+		return []any{
+			map[string]any{
+				"type": 1,
+				"components": []any{
+					map[string]any{"type": 2, "style": 5, "label": "\u041f\u0435\u0440\u0435\u0440\u0430\u0441\u0441\u043c\u043e\u0442\u0440", "url": reconsiderURL},
+				},
+			},
+		}
+	default:
+		return nil
+	}
+}
+
+func (h *DiscordAuthHandler) updateRPApplicationDiscordMessage(app rpApplicationDoc) error {
+	if h.rpWebhookURL == "" || strings.TrimSpace(app.DiscordMessageID) == "" {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
+
+	var owner discordUserDoc
+	_ = h.userCollection.FindOne(ctx, bson.M{"discordId": app.DiscordID}).Decode(&owner)
+	var ownerPtr *discordUserDoc
+	if strings.TrimSpace(owner.DiscordID) != "" {
+		ownerPtr = &owner
+	}
+	payload := h.buildRPApplicationDiscordPayload(app, ownerPtr)
+
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	base, err := webhookBaseURL(h.rpWebhookURL)
+	if err != nil {
+		return err
+	}
+
+	editURL := base + "/messages/" + url.PathEscape(app.DiscordMessageID)
+	req, err := http.NewRequest(http.MethodPatch, editURL, bytes.NewReader(raw))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		bodyRaw, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return fmt.Errorf("discord webhook edit error: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(bodyRaw)))
+	}
+
+	return nil
+}
+
+func webhookBaseURL(raw string) (string, error) {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return "", err
+	}
+	parsed.RawQuery = ""
+	return strings.TrimRight(parsed.String(), "/"), nil
 }
 
 func parseApplicationModerationIDFromPath(path string) (primitive.ObjectID, bool) {
@@ -552,11 +748,15 @@ func randomHex(size int) string {
 
 func (h *DiscordAuthHandler) writeModerationHTML(w http.ResponseWriter, app rpApplicationDoc, action string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	statusText := "Заявка уже обработана"
-	if action == "approve" {
-		statusText = "Заявка одобрена"
-	} else if action == "reject" {
-		statusText = "Заявка отклонена"
+
+	statusText := "\u0417\u0430\u044f\u0432\u043a\u0430 \u0443\u0436\u0435 \u043e\u0431\u0440\u0430\u0431\u043e\u0442\u0430\u043d\u0430"
+	switch normalizedStatus(app.Status) {
+	case "accepted":
+		statusText = "\u0417\u0430\u044f\u0432\u043a\u0430 \u043f\u0440\u0438\u043d\u044f\u0442\u0430"
+	case "canceled":
+		statusText = "\u0417\u0430\u044f\u0432\u043a\u0430 \u043e\u0442\u043c\u0435\u043d\u0435\u043d\u0430"
+	case "pending":
+		statusText = "\u0417\u0430\u044f\u0432\u043a\u0430 \u0432\u043e\u0437\u0432\u0440\u0430\u0449\u0435\u043d\u0430 \u043d\u0430 \u0440\u0430\u0441\u0441\u043c\u043e\u0442\u0440\u0435\u043d\u0438\u0435"
 	}
 
 	html := fmt.Sprintf(`<!doctype html>
@@ -573,11 +773,12 @@ func (h *DiscordAuthHandler) writeModerationHTML(w http.ResponseWriter, app rpAp
   <body>
     <div class="card">
       <h1>%s</h1>
-      <p class="muted">Ник: %s</p>
-      <p class="muted">Статус: %s</p>
+      <p class="muted">\u041d\u0438\u043a: %s</p>
+      <p class="muted">\u0421\u0442\u0430\u0442\u0443\u0441: %s</p>
+      <p class="muted">\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u0435: %s</p>
     </div>
   </body>
-</html>`, statusText, statusText, app.Nickname, app.Status)
+</html>`, statusText, statusText, app.Nickname, app.Status, action)
 
 	_, _ = w.Write([]byte(html))
 }

@@ -1,6 +1,6 @@
 ﻿export type RPApplicationSummary = {
   id: string
-  status: 'pending' | 'approved' | 'rejected'
+  status: 'pending' | 'accepted' | 'canceled' | 'approved' | 'rejected'
   nickname: string
   rpName?: string
   race?: string

@@ -12,6 +12,7 @@ type Config struct {
 	DiscordRedirectURL   string
 	DiscordTicketWebhook string
 	DiscordRPWebhook     string
+	RPModeratorIDs       string
 	MinecraftServerToken string
 }
 
@@ -26,6 +27,7 @@ func Load() Config {
 		DiscordRedirectURL:   getEnv("DISCORD_REDIRECT_URL", "http://localhost:8080/api/auth/discord/callback"),
 		DiscordTicketWebhook: getEnv("DISCORD_TICKET_WEBHOOK", ""),
 		DiscordRPWebhook:     getEnv("DISCORD_RP_WEBHOOK", ""),
+		RPModeratorIDs:       getEnv("DISCORD_RP_MODERATOR_IDS", ""),
 		MinecraftServerToken: getEnv("MINECRAFT_SERVER_TOKEN", ""),
 	}
 }

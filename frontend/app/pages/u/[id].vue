@@ -45,7 +45,7 @@
             Обновлено: {{ formatDate(applicationSummary.updatedAt) }}
           </p>
           <button
-            v-if="isOwner && applicationSummary"
+            v-if="isOwner && applicationSummary && canDeleteApplication"
             class="ghost danger"
             type="button"
             :disabled="deletePending"
@@ -104,10 +104,11 @@
           <p class="muted">Форма заполняется в модальном окне и отправляется в Discord-канал модерации.</p>
 
           <div class="application-actions">
-            <button class="primary" type="button" @click="openRpModal">
-              {{ applicationSummary ? 'Открыть заявку' : 'Создать RP-заявку' }}
+            <button class="primary" type="button" :disabled="applicationAccepted" @click="openRpModal">
+              {{ applicationSummary ? openApplicationLabel : createApplicationLabel }}
             </button>
-            <span v-if="applicationLocked" class="muted">У вас уже есть заявка в статусе «на рассмотрении».</span>
+            <span v-if="applicationAccepted" class="muted">{{ acceptedHint }}</span>
+            <span v-else-if="applicationLocked" class="muted">{{ pendingHint }}</span>
           </div>
 
           <p v-if="submitMessage" class="status" :class="{ error: submitError }">{{ submitMessage }}</p>
@@ -272,17 +273,43 @@ const fullRPName = computed(() => {
   return full || 'Не указан'
 })
 
+const statusLabelPublic = '\u041f\u0443\u0431\u043b\u0438\u0447\u043d\u044b\u0439 \u0432\u0438\u0434 \u043f\u0440\u043e\u0444\u0438\u043b\u044f'
+const statusLabelAccepted = '\u041f\u0440\u0438\u043d\u044f\u0442\u0430'
+const statusLabelCanceled = '\u041e\u0442\u043c\u0435\u043d\u0435\u043d\u0430'
+const statusLabelPending = '\u041d\u0430 \u0440\u0430\u0441\u0441\u043c\u043e\u0442\u0440\u0435\u043d\u0438\u0438'
+const statusLabelMissing = '\u0415\u0449\u0435 \u043d\u0435 \u043e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0430'
+
 const applicationStatusLabel = computed(() => {
-  if (!isOwner.value) return 'Недоступно для просмотра'
+  if (!isOwner.value) return statusLabelPublic
 
   const status = applicationSummary.value?.status
-  if (status === 'approved') return 'Одобрена'
-  if (status === 'rejected') return 'Отклонена'
-  if (status === 'pending') return 'На рассмотрении'
-  return 'Заявка не отправлена'
+  if (status === 'accepted' || status === 'approved') return statusLabelAccepted
+  if (status === 'canceled' || status === 'rejected') return statusLabelCanceled
+  if (status === 'pending') return statusLabelPending
+  return statusLabelMissing
 })
 
-const applicationLocked = computed(() => applicationSummary.value?.status === 'pending')
+const applicationLocked = computed(() => {
+  const status = applicationSummary.value?.status
+  return status === 'pending' || status === 'accepted' || status === 'approved'
+})
+
+const applicationAccepted = computed(() => {
+  const status = applicationSummary.value?.status
+  return status === 'accepted' || status === 'approved'
+})
+
+const canDeleteApplication = computed(() => {
+  const status = applicationSummary.value?.status
+  return status !== 'accepted' && status !== 'approved'
+})
+
+const acceptedHint = '\u0417\u0430\u044f\u0432\u043a\u0430 \u043f\u0440\u0438\u043d\u044f\u0442\u0430. \u041f\u043e\u0432\u0442\u043e\u0440\u043d\u0430\u044f \u043e\u0442\u043f\u0440\u0430\u0432\u043a\u0430 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430.'
+const pendingHint = '\u0423 \u0432\u0430\u0441 \u0443\u0436\u0435 \u0435\u0441\u0442\u044c \u0437\u0430\u044f\u0432\u043a\u0430 \u0432 \u0441\u0442\u0430\u0442\u0443\u0441\u0435 \u00ab\u043d\u0430 \u0440\u0430\u0441\u0441\u043c\u043e\u0442\u0440\u0435\u043d\u0438\u0438\u00bb.'
+const openApplicationLabel = '\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u0437\u0430\u044f\u0432\u043a\u0443'
+const createApplicationLabel = '\u0421\u043e\u0437\u0434\u0430\u0442\u044c RP-\u0437\u0430\u044f\u0432\u043a\u0443'
+const acceptedSubmitErrorText = '\u0417\u0430\u044f\u0432\u043a\u0430 \u0443\u0436\u0435 \u043f\u0440\u0438\u043d\u044f\u0442\u0430. \u041f\u043e\u0432\u0442\u043e\u0440\u043d\u0430\u044f \u043e\u0442\u043f\u0440\u0430\u0432\u043a\u0430 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430.'
+const pendingSubmitErrorText = '\u0422\u0435\u043a\u0443\u0449\u0430\u044f \u0437\u0430\u044f\u0432\u043a\u0430 \u0435\u0449\u0435 \u0440\u0430\u0441\u0441\u043c\u0430\u0442\u0440\u0438\u0432\u0430\u0435\u0442\u0441\u044f \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u0435\u0439.'
 
 const progressCompleted = computed(() => {
   const fields = [
@@ -426,9 +453,15 @@ const submitApplication = async () => {
   submitMessage.value = ''
   submitError.value = false
 
+  if (applicationAccepted.value) {
+    submitError.value = true
+    submitMessage.value = acceptedSubmitErrorText
+    return
+  }
+
   if (applicationLocked.value) {
     submitError.value = true
-    submitMessage.value = 'Текущая заявка еще рассматривается администрацией.'
+    submitMessage.value = pendingSubmitErrorText
     return
   }
 
@@ -836,6 +869,13 @@ textarea {
 .status {
   color: #9ff4be;
 }
+
+.primary:disabled,
+.ghost:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 
 .status.error {
   color: #ff9f9f;
