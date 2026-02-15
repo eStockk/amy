@@ -505,27 +505,41 @@ func (h *DiscordAuthHandler) buildRPApplicationDiscordPayload(doc rpApplicationD
 		discordAccount = user.Username + " (" + user.DiscordID + ")"
 	}
 
+	fields := []map[string]string{
+		{"name": "Discord \u0430\u043a\u043a\u0430\u0443\u043d\u0442", "value": safeValue(discordAccount)},
+		{"name": "\u041d\u0438\u043a \u0432 \u0438\u0433\u0440\u0435", "value": safeValue(doc.Nickname)},
+		{"name": "\u041e\u0442\u043a\u0443\u0434\u0430 \u0443\u0437\u043d\u0430\u043b \u0438 \u043e \u0441\u0435\u0440\u0432\u0435\u0440\u0435", "value": safeValue(doc.Source)},
+		{"name": "\u0418\u043c\u044f \u0438 \u0444\u0430\u043c\u0438\u043b\u0438\u044f", "value": safeValue(doc.RPName)},
+		{"name": "\u0414\u0430\u0442\u0430 \u0440\u043e\u0436\u0434\u0435\u043d\u0438\u044f", "value": safeValue(doc.BirthDate)},
+		{"name": "\u0420\u0430\u0441\u0430", "value": safeValue(doc.Race)},
+		{"name": "\u041f\u043e\u043b", "value": safeValue(doc.Gender)},
+		{"name": "\u041a\u043b\u044e\u0447\u0435\u0432\u044b\u0435 \u043d\u0430\u0432\u044b\u043a\u0438", "value": trimForDiscord(doc.Skills)},
+		{"name": "\u041f\u043b\u0430\u043d \u0440\u0430\u0437\u0432\u0438\u0442\u0438\u044f", "value": trimForDiscord(doc.Plan)},
+		{"name": "\u0411\u0438\u043e\u0433\u0440\u0430\u0444\u0438\u044f", "value": trimForDiscord(doc.Biography)},
+		{"name": "\u0421\u0441\u044b\u043b\u043a\u0430 \u043d\u0430 \u0441\u043a\u0438\u043d", "value": safeValue(doc.SkinURL)},
+	}
+
+	if links := h.rpModerationLinks(doc); links != "" {
+		fields = append(fields, map[string]string{
+			"name":  "\u041c\u043e\u0434\u0435\u0440\u0430\u0446\u0438\u044f",
+			"value": links,
+		})
+	}
+
 	embed := map[string]any{
 		"title":       "\u0052\u0050-\u0437\u0430\u044f\u0432\u043a\u0430: " + doc.Nickname,
 		"description": "\u0421\u0442\u0430\u0442\u0443\u0441 \u0437\u0430\u044f\u0432\u043a\u0438: " + statusText,
 		"color":       14901048,
-		"fields": []map[string]string{
-			{"name": "Discord \u0430\u043a\u043a\u0430\u0443\u043d\u0442", "value": safeValue(discordAccount)},
-			{"name": "\u041d\u0438\u043a \u0432 \u0438\u0433\u0440\u0435", "value": safeValue(doc.Nickname)},
-			{"name": "\u041e\u0442\u043a\u0443\u0434\u0430 \u0443\u0437\u043d\u0430\u043b \u0438 \u043e \u0441\u0435\u0440\u0432\u0435\u0440\u0435", "value": safeValue(doc.Source)},
-			{"name": "\u0418\u043c\u044f \u0438 \u0444\u0430\u043c\u0438\u043b\u0438\u044f", "value": safeValue(doc.RPName)},
-			{"name": "\u0414\u0430\u0442\u0430 \u0440\u043e\u0436\u0434\u0435\u043d\u0438\u044f", "value": safeValue(doc.BirthDate)},
-			{"name": "\u0420\u0430\u0441\u0430", "value": safeValue(doc.Race)},
-			{"name": "\u041f\u043e\u043b", "value": safeValue(doc.Gender)},
-			{"name": "\u041a\u043b\u044e\u0447\u0435\u0432\u044b\u0435 \u043d\u0430\u0432\u044b\u043a\u0438", "value": trimForDiscord(doc.Skills)},
-			{"name": "\u041f\u043b\u0430\u043d \u0440\u0430\u0437\u0432\u0438\u0442\u0438\u044f", "value": trimForDiscord(doc.Plan)},
-			{"name": "\u0411\u0438\u043e\u0433\u0440\u0430\u0444\u0438\u044f", "value": trimForDiscord(doc.Biography)},
-			{"name": "\u0421\u0441\u044b\u043b\u043a\u0430 \u043d\u0430 \u0441\u043a\u0438\u043d", "value": safeValue(doc.SkinURL)},
-		},
+		"fields":      fields,
+	}
+
+	content := "\u0052\u0050-\u0442\u0438\u043a\u0435\u0442 \u0438\u0433\u0440\u043e\u043a\u0430 " + doc.Nickname
+	if links := h.rpModerationLinks(doc); links != "" {
+		content += "\n" + links
 	}
 
 	payload := map[string]any{
-		"content": "\u0052\u0050-\u0442\u0438\u043a\u0435\u0442 \u0438\u0433\u0440\u043e\u043a\u0430 " + doc.Nickname,
+		"content": content,
 		"embeds":  []any{embed},
 	}
 
