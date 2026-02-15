@@ -16,7 +16,7 @@
         <article class="panel identity-card">
           <div class="avatar-box">
             <img class="avatar" :src="profile.avatarUrl || logo" alt="avatar" />
-            <span class="presence"></span>
+            <span class="presence" :class="{ offline: !profile.isOnline }"></span>
           </div>
 
           <p class="eyebrow">Профиль игрока</p>
@@ -30,6 +30,7 @@
             <span class="chip" v-if="fullRPName !== 'Не указан'">RP: {{ fullRPName }}</span>
             <span class="chip" v-if="profile.joinedAt">На сайте с {{ formatDate(profile.joinedAt, true) }}</span>
             <span class="chip" v-else>Дата регистрации обновится после входа</span>
+            <span class="chip">{{ onlineStatusLabel }}</span>
           </div>
 
           <div class="actions" v-if="isOwner">
@@ -211,6 +212,7 @@ type PublicProfile = {
   rpFirstName?: string
   rpLastName?: string
   joinedAt?: string
+  isOnline?: boolean
 }
 
 type PublicProfileResponse = {
@@ -268,10 +270,16 @@ const form = reactive({
 })
 
 const fullRPName = computed(() => {
-  if (!profile.value) return 'Не указан'
+  if (!profile.value) return '\u041d\u0435 \u0443\u043a\u0430\u0437\u0430\u043d'
   const full = `${profile.value.rpFirstName || ''} ${profile.value.rpLastName || ''}`.trim()
-  return full || 'Не указан'
+  return full || '\u041d\u0435 \u0443\u043a\u0430\u0437\u0430\u043d'
 })
+
+const onlineStatusLabel = computed(() =>
+  profile.value?.isOnline
+    ? '\u0421\u0435\u0439\u0447\u0430\u0441 \u043d\u0430 \u0441\u0430\u0439\u0442\u0435'
+    : '\u0421\u0435\u0439\u0447\u0430\u0441 \u043d\u0435 \u043d\u0430 \u0441\u0430\u0439\u0442\u0435'
+)
 
 const statusLabelPublic = '\u041f\u0443\u0431\u043b\u0438\u0447\u043d\u044b\u0439 \u0432\u0438\u0434 \u043f\u0440\u043e\u0444\u0438\u043b\u044f'
 const statusLabelAccepted = '\u041f\u0440\u0438\u043d\u044f\u0442\u0430'
@@ -369,7 +377,11 @@ const loadProfile = async () => {
   errorMessage.value = ''
 
   try {
-    await refresh()
+    try {
+      await refresh()
+    } catch {
+      // Even if auth session expired, public profile must still load.
+    }
 
     const response = await $fetch<PublicProfileResponse>(`${config.public.apiBase}/profiles/${profileId.value}`, {
       credentials: 'include'
@@ -658,6 +670,11 @@ watch(rpModalOpen, (opened) => {
   background: #36ef88;
   border: 3px solid #171a26;
   box-shadow: 0 0 10px rgba(54, 239, 136, 0.5);
+}
+
+.presence.offline {
+  background: #e49a38;
+  box-shadow: 0 0 10px rgba(228, 154, 56, 0.5);
 }
 
 .eyebrow {

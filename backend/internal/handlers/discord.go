@@ -57,6 +57,8 @@ type discordUserDoc struct {
 	RPFirstName         string             `bson:"rpFirstName,omitempty" json:"rpFirstName,omitempty"`
 	RPLastName          string             `bson:"rpLastName,omitempty" json:"rpLastName,omitempty"`
 	MinecraftVerifiedAt *time.Time         `bson:"minecraftVerifiedAt,omitempty" json:"minecraftVerifiedAt,omitempty"`
+	LastSeenAt          *time.Time         `bson:"lastSeenAt,omitempty" json:"lastSeenAt,omitempty"`
+	PresenceActive      bool               `bson:"presenceActive,omitempty" json:"presenceActive,omitempty"`
 	CreatedAt           time.Time          `bson:"createdAt,omitempty" json:"createdAt,omitempty"`
 	UpdatedAt           time.Time          `bson:"updatedAt,omitempty" json:"updatedAt,omitempty"`
 }
@@ -77,6 +79,7 @@ type discordUserOut struct {
 	RPFirstName     string                   `json:"rpFirstName,omitempty"`
 	RPLastName      string                   `json:"rpLastName,omitempty"`
 	ProfileURL      string                   `json:"profileUrl"`
+	IsOnline        bool                     `json:"isOnline"`
 	RPApplication   *rpApplicationSummaryOut `json:"rpApplication,omitempty"`
 }
 
@@ -93,6 +96,7 @@ type publicProfile struct {
 	RPFirstName     string     `json:"rpFirstName,omitempty"`
 	RPLastName      string     `json:"rpLastName,omitempty"`
 	JoinedAt        *time.Time `json:"joinedAt,omitempty"`
+	IsOnline        bool       `json:"isOnline"`
 }
 
 type rpApplicationSummaryOut struct {
@@ -109,6 +113,8 @@ type rpApplicationSummaryOut struct {
 }
 
 var minecraftNicknameRe = regexp.MustCompile(`^[A-Za-z0-9_]{3,16}$`)
+
+const presenceOnlineWindow = 75 * time.Second
 
 func NewDiscordAuthHandler(
 	db *mongo.Database,
@@ -254,6 +260,7 @@ func (h *DiscordAuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 
 	summary, _ := h.latestApplicationSummary(ctx, user.DiscordID)
 
+	now := time.Now().UTC()
 	writeJSON(w, http.StatusOK, discordMeResponse{
 		Authenticated: true,
 		User: &discordUserOut{
@@ -267,6 +274,7 @@ func (h *DiscordAuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 			RPFirstName:     user.RPFirstName,
 			RPLastName:      user.RPLastName,
 			ProfileURL:      buildProfileURL(h.frontendURL, user.DiscordID),
+			IsOnline:        isUserOnline(user, now),
 			RPApplication:   summary,
 		},
 	})
@@ -276,6 +284,15 @@ func (h *DiscordAuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
+	}
+
+	if user, err := h.requireAuthenticatedUser(r); err == nil {
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		_, _ = h.userCollection.UpdateOne(ctx, bson.M{"discordId": user.DiscordID}, bson.M{"$set": bson.M{
+			"presenceActive": false,
+			"updatedAt":      time.Now().UTC(),
+		}})
+		cancel()
 	}
 
 	clearSessionCookie(w, r, h.frontendURL)
@@ -301,14 +318,23 @@ func (h *DiscordAuthHandler) PublicProfile(w http.ResponseWriter, r *http.Reques
 	err := h.userCollection.FindOne(ctx, bson.M{"discordId": profileID}).Decode(&user)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			writeError(w, http.StatusNotFound, "profile not found")
+			fallback, fallbackErr := h.publicProfileFromRPApplication(ctx, profileID)
+			if fallbackErr != nil {
+				writeError(w, http.StatusInternalServerError, "failed to load profile")
+				return
+			}
+			if fallback == nil {
+				writeError(w, http.StatusNotFound, "profile not found")
+				return
+			}
+			writeJSON(w, http.StatusOK, publicProfileResponse{Profile: fallback})
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "failed to load profile")
 		return
 	}
 
-	profile := toPublicProfile(user)
+	profile := toPublicProfile(user, time.Now().UTC())
 	if earliest := h.earliestKnownJoinAt(ctx, user.DiscordID); earliest != nil {
 		if profile.JoinedAt == nil || earliest.Before(*profile.JoinedAt) {
 			profile.JoinedAt = earliest
@@ -316,6 +342,63 @@ func (h *DiscordAuthHandler) PublicProfile(w http.ResponseWriter, r *http.Reques
 	}
 
 	writeJSON(w, http.StatusOK, publicProfileResponse{Profile: profile})
+}
+
+func (h *DiscordAuthHandler) publicProfileFromRPApplication(ctx context.Context, discordID string) (*publicProfile, error) {
+	var latest rpApplicationDoc
+	err := h.rpCollection.FindOne(
+		ctx,
+		bson.M{"discordId": discordID},
+		options.FindOne().SetSort(bson.D{{Key: "createdAt", Value: -1}}),
+	).Decode(&latest)
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	displayName := strings.TrimSpace(latest.RPName)
+	if displayName == "" {
+		displayName = strings.TrimSpace(latest.Nickname)
+	}
+	if displayName == "" {
+		displayName = "?????"
+	}
+
+	username := "user_" + discordID
+	if len(discordID) > 6 {
+		username = "user_" + discordID[len(discordID)-6:]
+	}
+
+	profile := &publicProfile{
+		ID:              discordID,
+		Username:        username,
+		DisplayName:     displayName,
+		AvatarURL:       "",
+		LinkedMinecraft: latest.Nickname,
+		IsOnline:        false,
+	}
+
+	if strings.TrimSpace(latest.RPName) != "" {
+		parts := strings.Fields(latest.RPName)
+		if len(parts) > 0 {
+			profile.RPFirstName = parts[0]
+		}
+		if len(parts) > 1 {
+			profile.RPLastName = strings.Join(parts[1:], " ")
+		}
+	}
+
+	joinedAt := latest.CreatedAt.UTC()
+	if joinedAt.IsZero() {
+		joinedAt = latest.UpdatedAt.UTC()
+	}
+	if !joinedAt.IsZero() {
+		profile.JoinedAt = &joinedAt
+	}
+
+	return profile, nil
 }
 
 func resolveCookieOptions(frontendURL string, r *http.Request) (string, bool) {
@@ -382,6 +465,17 @@ func clearSessionCookie(w http.ResponseWriter, r *http.Request, frontendURL stri
 	http.SetCookie(w, cookie)
 }
 
+func isUserOnline(user discordUserDoc, now time.Time) bool {
+	if !user.PresenceActive || user.LastSeenAt == nil || user.LastSeenAt.IsZero() {
+		return false
+	}
+	lastSeen := user.LastSeenAt.UTC()
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	return now.Sub(lastSeen) <= presenceOnlineWindow
+}
+
 func displayNameFor(user discordUserDoc) string {
 	displayName := strings.TrimSpace(user.GlobalName)
 	if displayName == "" {
@@ -407,7 +501,7 @@ func buildProfileURL(frontendURL, discordID string) string {
 	return strings.TrimRight(frontendURL, "/") + "/u/" + discordID
 }
 
-func toPublicProfile(user discordUserDoc) *publicProfile {
+func toPublicProfile(user discordUserDoc, now time.Time) *publicProfile {
 	profile := &publicProfile{
 		ID:              user.DiscordID,
 		Username:        user.Username,
@@ -416,6 +510,7 @@ func toPublicProfile(user discordUserDoc) *publicProfile {
 		LinkedMinecraft: user.LinkedMinecraft,
 		RPFirstName:     user.RPFirstName,
 		RPLastName:      user.RPLastName,
+		IsOnline:        isUserOnline(user, now),
 	}
 
 	var joinedAt time.Time

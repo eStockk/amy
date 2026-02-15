@@ -66,7 +66,7 @@ func (h *DiscordAuthHandler) RequestMinecraftVerificationCode(w http.ResponseWri
 
 	application, err := h.findApprovedApplicationByNickname(ctx, payload.Nickname)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "approved rp application not found")
+		writeError(w, http.StatusNotFound, "approved or accepted rp application not found")
 		return
 	}
 
@@ -252,7 +252,7 @@ func (h *DiscordAuthHandler) findApprovedApplicationByNickname(ctx context.Conte
 	var app rpApplicationDoc
 	err := h.rpCollection.FindOne(ctx, bson.M{
 		"nickname": nickname,
-		"status":   "approved",
+		"status":   bson.M{"$in": []string{"accepted", "approved"}},
 	}, findOpts).Decode(&app)
 	if err != nil {
 		return nil, err

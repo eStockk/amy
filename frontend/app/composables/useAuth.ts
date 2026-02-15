@@ -22,6 +22,7 @@ export type AuthUser = {
   rpFirstName?: string
   rpLastName?: string
   profileUrl?: string
+  isOnline?: boolean
   rpApplication?: RPApplicationSummary
 }
 

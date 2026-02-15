@@ -66,6 +66,7 @@ func main() {
 	mux.HandleFunc("/api/auth/discord/callback", discordHandler.Callback)
 	mux.HandleFunc("/api/auth/me", discordHandler.Me)
 	mux.HandleFunc("/api/auth/logout", discordHandler.Logout)
+	mux.HandleFunc("/api/auth/presence", discordHandler.PresencePing)
 	mux.HandleFunc("/api/auth/verify-minecraft", discordHandler.VerifyMinecraftCode)
 	mux.HandleFunc("/api/profiles/", discordHandler.PublicProfile)
 	mux.HandleFunc("/api/rp/applications", discordHandler.SubmitRPApplication)

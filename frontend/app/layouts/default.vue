@@ -13,6 +13,74 @@
 <script setup lang="ts">
 import BaseSidebar from '~/components/BaseSidebar.vue'
 import TopBar from '~/components/TopBar.vue'
+import { useAuth } from '~/composables/useAuth'
+
+const config = useRuntimeConfig()
+const { authenticated } = useAuth()
+
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+let stopAuthWatch: (() => void) | null = null
+
+const isTabActive = () => document.visibilityState === 'visible' && document.hasFocus()
+
+const pingPresence = async (active: boolean) => {
+  if (!authenticated.value) return
+  try {
+    await $fetch(`${config.public.apiBase}/auth/presence`, {
+      method: 'POST',
+      credentials: 'include',
+      body: { active }
+    })
+  } catch {
+    // presence is best-effort, do not break UI
+  }
+}
+
+const startHeartbeat = () => {
+  if (heartbeatTimer) return
+  heartbeatTimer = setInterval(() => {
+    void pingPresence(isTabActive())
+  }, 25000)
+}
+
+const stopHeartbeat = () => {
+  if (!heartbeatTimer) return
+  clearInterval(heartbeatTimer)
+  heartbeatTimer = null
+}
+
+const handleVisibility = () => {
+  void pingPresence(isTabActive())
+}
+
+onMounted(() => {
+  stopAuthWatch = watch(
+    authenticated,
+    (value) => {
+      if (value) {
+        startHeartbeat()
+        void pingPresence(isTabActive())
+        return
+      }
+      stopHeartbeat()
+    },
+    { immediate: true }
+  )
+
+  document.addEventListener('visibilitychange', handleVisibility)
+  window.addEventListener('focus', handleVisibility)
+  window.addEventListener('blur', handleVisibility)
+})
+
+onBeforeUnmount(() => {
+  stopHeartbeat()
+  stopAuthWatch?.()
+  stopAuthWatch = null
+  document.removeEventListener('visibilitychange', handleVisibility)
+  window.removeEventListener('focus', handleVisibility)
+  window.removeEventListener('blur', handleVisibility)
+  void pingPresence(false)
+})
 </script>
 
 <style scoped>
