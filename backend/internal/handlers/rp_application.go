@@ -537,6 +537,21 @@ func (h *DiscordAuthHandler) buildRPApplicationDiscordPayload(doc rpApplicationD
 	return payload
 }
 
+func (h *DiscordAuthHandler) rpModerationLinks(doc rpApplicationDoc) string {
+	status := normalizedStatus(doc.Status)
+	switch status {
+	case "pending":
+		acceptURL := h.moderationURL(doc.ID.Hex(), "accept", doc.ModerationToken)
+		cancelURL := h.moderationURL(doc.ID.Hex(), "cancel", doc.ModerationToken)
+		return "[\u041f\u0440\u0438\u043d\u044f\u0442\u044c](" + acceptURL + ") \u2022 [\u041e\u0442\u043c\u0435\u043d\u0438\u0442\u044c](" + cancelURL + ")"
+	case "accepted":
+		reconsiderURL := h.moderationURL(doc.ID.Hex(), "reconsider", doc.ModerationToken)
+		return "[\u041f\u0435\u0440\u0435\u0440\u0430\u0441\u0441\u043c\u043e\u0442\u0440](" + reconsiderURL + ")"
+	default:
+		return ""
+	}
+}
+
 func (h *DiscordAuthHandler) rpDiscordComponents(doc rpApplicationDoc) []any {
 	status := normalizedStatus(doc.Status)
 

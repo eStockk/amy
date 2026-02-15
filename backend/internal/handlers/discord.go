@@ -516,6 +516,10 @@ func (h *DiscordAuthHandler) RunMigrations(ctx context.Context) error {
 		return err
 	}
 
+	if err := h.syncRPDiscordMessages(ctx); err != nil {
+		return err
+	}
+
 	cursor, err := h.userCollection.Find(ctx, bson.M{}, options.Find().SetProjection(bson.M{
 		"discordId": 1,
 		"createdAt": 1,
@@ -696,6 +700,54 @@ func (h *DiscordAuthHandler) migrateRPStatuses(ctx context.Context) error {
 
 		_, err = h.rpCollection.UpdateByID(ctx, doc.ID, bson.M{"$set": setPayload})
 		if err != nil {
+			return err
+		}
+	}
+
+	return cursor.Err()
+}
+
+func (h *DiscordAuthHandler) syncRPDiscordMessages(ctx context.Context) error {
+	if h.rpCollection == nil || strings.TrimSpace(h.rpWebhookURL) == "" {
+		return nil
+	}
+
+	filter := bson.M{
+		"discordMessageId": bson.M{"$exists": true, "$ne": ""},
+		"status":           bson.M{"$in": []string{"pending", "accepted", "approved"}},
+	}
+
+	cursor, err := h.rpCollection.Find(ctx, filter, options.Find().SetProjection(bson.M{
+		"discordId":        1,
+		"discordMessageId": 1,
+		"moderationToken":  1,
+		"status":           1,
+		"nickname":         1,
+		"source":           1,
+		"rpName":           1,
+		"birthDate":        1,
+		"race":             1,
+		"gender":           1,
+		"skills":           1,
+		"plan":             1,
+		"biography":        1,
+		"skinUrl":          1,
+		"updatedAt":        1,
+	}))
+	if err != nil {
+		return err
+	}
+	defer cursor.Close(ctx)
+
+	for cursor.Next(ctx) {
+		var app rpApplicationDoc
+		if err := cursor.Decode(&app); err != nil {
+			return err
+		}
+		if strings.TrimSpace(app.DiscordMessageID) == "" {
+			continue
+		}
+		if err := h.updateRPApplicationDiscordMessage(app); err != nil {
 			return err
 		}
 	}
