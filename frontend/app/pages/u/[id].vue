@@ -101,13 +101,34 @@
             <span class="badge">{{ progressCompleted }}/10</span>
           </div>
 
+          <p class="muted">Форма заполняется в модальном окне и отправляется в Discord-канал модерации.</p>
+
+          <div class="application-actions">
+            <button class="primary" type="button" @click="openRpModal">
+              {{ applicationSummary ? 'Открыть заявку' : 'Создать RP-заявку' }}
+            </button>
+            <span v-if="applicationLocked" class="muted">У вас уже есть заявка в статусе «на рассмотрении».</span>
+          </div>
+
+          <p v-if="submitMessage" class="status" :class="{ error: submitError }">{{ submitMessage }}</p>
+        </section>
+      </div>
+    </section>
+
+    <Teleport to="body">
+      <div v-if="isOwner && rpModalOpen" class="modal-backdrop" @click.self="closeRpModal">
+        <section class="panel modal-window" role="dialog" aria-modal="true" aria-label="RP-заявка">
+          <header class="modal-head">
+            <div>
+              <p class="eyebrow">RP-заявка</p>
+              <h3>Анкета игрока</h3>
+            </div>
+            <button class="ghost" type="button" @click="closeRpModal">Закрыть</button>
+          </header>
+
           <div class="progress">
             <span :style="{ width: `${progressPercent}%` }"></span>
           </div>
-
-          <p class="muted">
-            Заполните анкету. Она будет отправлена в Discord-канал модерации с кнопками «Одобрить» и «Отклонить».
-          </p>
 
           <form class="form-grid" @submit.prevent="submitApplication">
             <label>
@@ -117,12 +138,12 @@
 
             <label>
               <span>2. Откуда узнали о сервере (необязательно)</span>
-              <input v-model.trim="form.source" type="text" />
+              <input v-model.trim="form.source" type="text" maxlength="200" />
             </label>
 
             <label>
               <span>3. Имя, фамилия (если имеется)</span>
-              <input v-model.trim="form.rpName" type="text" />
+              <input v-model.trim="form.rpName" type="text" maxlength="120" />
             </label>
 
             <label>
@@ -132,12 +153,12 @@
 
             <label>
               <span>5. Раса</span>
-              <input v-model.trim="form.race" type="text" required />
+              <input v-model.trim="form.race" type="text" maxlength="80" required />
             </label>
 
             <label>
               <span>6. Пол</span>
-              <input v-model.trim="form.gender" type="text" required />
+              <input v-model.trim="form.gender" type="text" maxlength="80" required />
             </label>
 
             <label class="wide">
@@ -164,14 +185,14 @@
               <button class="primary" type="submit" :disabled="submitPending || applicationLocked">
                 {{ submitPending ? 'Отправляем...' : 'Отправить RP-заявку' }}
               </button>
-              <span v-if="applicationLocked" class="muted">У вас уже есть заявка в статусе «на рассмотрении».</span>
+              <button class="ghost" type="button" @click="closeRpModal">Отмена</button>
             </div>
           </form>
 
           <p v-if="submitMessage" class="status" :class="{ error: submitError }">{{ submitMessage }}</p>
         </section>
       </div>
-    </section>
+    </Teleport>
   </div>
 </template>
 
@@ -229,6 +250,8 @@ const submitError = ref(false)
 const deletePending = ref(false)
 const deleteMessage = ref('')
 const deleteError = ref(false)
+
+const rpModalOpen = ref(false)
 
 const form = reactive({
   nickname: '',
@@ -449,6 +472,7 @@ const submitApplication = async () => {
     })
 
     submitMessage.value = 'Заявка отправлена. Ожидайте решения администрации.'
+    rpModalOpen.value = false
     await loadProfile()
   } catch (error: unknown) {
     submitError.value = true
@@ -484,8 +508,35 @@ const logoutAndBack = async () => {
   await navigateTo('/')
 }
 
+
+const openRpModal = () => {
+  submitMessage.value = ''
+  submitError.value = false
+  rpModalOpen.value = true
+}
+
+const closeRpModal = () => {
+  rpModalOpen.value = false
+}
+
+const handleEscape = (event: KeyboardEvent) => {
+  if (event.key === 'Escape' && rpModalOpen.value) {
+    rpModalOpen.value = false
+  }
+}
+
 onMounted(() => {
+  if (import.meta.client) {
+    window.addEventListener('keydown', handleEscape)
+  }
   void loadProfile()
+})
+
+onBeforeUnmount(() => {
+  if (import.meta.client) {
+    window.removeEventListener('keydown', handleEscape)
+    document.body.style.overflow = ''
+  }
 })
 
 watch(
@@ -494,6 +545,11 @@ watch(
     void loadProfile()
   }
 )
+
+watch(rpModalOpen, (opened) => {
+  if (!import.meta.client) return
+  document.body.style.overflow = opened ? 'hidden' : ''
+})
 </script>
 
 <style scoped>
@@ -516,12 +572,12 @@ watch(
 }
 
 .panel {
-  border: 1px solid rgba(228, 94, 56, 0.22);
-  border-radius: 10px;
-  background: radial-gradient(circle at top left, rgba(228, 94, 56, 0.12), transparent 45%),
-    linear-gradient(165deg, rgba(24, 18, 16, 0.95), rgba(13, 12, 17, 0.98));
-  backdrop-filter: blur(8px);
-  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.38);
+  border: 1px solid rgba(228, 94, 56, 0.24);
+  border-radius: 8px;
+  background: radial-gradient(circle at 0% 0%, rgba(228, 94, 56, 0.2), transparent 45%),
+    linear-gradient(160deg, rgba(22, 16, 15, 0.95), rgba(12, 11, 14, 0.98));
+  backdrop-filter: blur(10px);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.4);
 }
 
 .state-card {
@@ -553,7 +609,7 @@ watch(
 .avatar {
   width: 84px;
   height: 84px;
-  border-radius: 10px;
+  border-radius: 8px;
   object-fit: cover;
   border: 1px solid rgba(255, 255, 255, 0.24);
   background: rgba(255, 255, 255, 0.08);
@@ -605,7 +661,7 @@ h1 {
 }
 
 .chip {
-  border-radius: 999px;
+  border-radius: 6px;
   padding: 6px 10px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(255, 255, 255, 0.06);
@@ -631,8 +687,8 @@ h1 {
 
 .info-card {
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(228, 94, 56, 0.26);
+  background: rgba(228, 94, 56, 0.08);
   padding: 12px;
   display: grid;
   gap: 8px;
@@ -669,7 +725,7 @@ h1 {
 }
 
 .badge {
-  border-radius: 999px;
+  border-radius: 6px;
   border: 1px solid rgba(228, 94, 56, 0.45);
   background: rgba(228, 94, 56, 0.16);
   color: #ffd4c8;
@@ -680,7 +736,7 @@ h1 {
 .progress {
   width: 100%;
   height: 10px;
-  border-radius: 999px;
+  border-radius: 6px;
   background: rgba(255, 255, 255, 0.08);
   overflow: hidden;
 }
@@ -688,7 +744,7 @@ h1 {
 .progress span {
   display: block;
   height: 100%;
-  border-radius: 999px;
+  border-radius: 6px;
   background: linear-gradient(90deg, #e45e38, #b8432c);
   transition: width 0.25s ease;
 }
@@ -715,7 +771,7 @@ label span {
 
 input,
 textarea {
-  border-radius: 8px;
+  border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   background: rgba(255, 255, 255, 0.05);
   color: var(--text);
@@ -733,6 +789,13 @@ textarea {
   gap: 10px;
 }
 
+.application-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .actions-row {
   display: flex;
   align-items: center;
@@ -742,7 +805,7 @@ textarea {
 
 .ghost,
 .primary {
-  border-radius: 999px;
+  border-radius: 6px;
   padding: 10px 16px;
   border: 1px solid transparent;
   text-decoration: none;
@@ -778,6 +841,34 @@ textarea {
   color: #ff9f9f;
 }
 
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(7, 6, 9, 0.8);
+  backdrop-filter: blur(6px);
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+.modal-window {
+  width: min(980px, 100%);
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
 @media (max-width: 1100px) {
   .shell {
     grid-template-columns: 1fr;
@@ -795,17 +886,25 @@ textarea {
     grid-template-columns: 1fr;
   }
 
-  .actions-row {
+  .actions-row,
+  .application-actions {
     align-items: stretch;
   }
 
-  .actions-row .primary {
+  .actions-row .primary,
+  .application-actions .primary,
+  .row .primary {
     width: 100%;
   }
 
   .section-head {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .modal-window {
+    max-height: 100dvh;
+    border-radius: 0;
   }
 }
 

@@ -308,7 +308,7 @@ func (h *DiscordAuthHandler) sendRPApplicationWebhook(doc rpApplicationDoc, user
 
 	embed := map[string]any{
 		"title":       "Новая RP-заявка: " + doc.Nickname,
-		"description": "Пользователь отправил RP-заявку через сайт Amy.",
+		"description": "Игрок отправил RP-анкету через сайт Amy.",
 		"color":       14901048,
 		"fields": []map[string]string{
 			{"name": "Discord аккаунт", "value": user.Username + " (" + user.DiscordID + ")"},

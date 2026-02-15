@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -45,17 +46,18 @@ type discordUser struct {
 }
 
 type discordUserDoc struct {
-	DiscordID           string     `bson:"discordId" json:"id"`
-	Username            string     `bson:"username" json:"username"`
-	GlobalName          string     `bson:"globalName" json:"globalName"`
-	Email               string     `bson:"email" json:"email"`
-	Avatar              string     `bson:"avatar" json:"avatar"`
-	LinkedMinecraft     string     `bson:"linkedMinecraft,omitempty" json:"linkedMinecraft,omitempty"`
-	RPFirstName         string     `bson:"rpFirstName,omitempty" json:"rpFirstName,omitempty"`
-	RPLastName          string     `bson:"rpLastName,omitempty" json:"rpLastName,omitempty"`
-	MinecraftVerifiedAt *time.Time `bson:"minecraftVerifiedAt,omitempty" json:"minecraftVerifiedAt,omitempty"`
-	CreatedAt           time.Time  `bson:"createdAt,omitempty" json:"createdAt,omitempty"`
-	UpdatedAt           time.Time  `bson:"updatedAt,omitempty" json:"updatedAt,omitempty"`
+	ID                  primitive.ObjectID `bson:"_id,omitempty"`
+	DiscordID           string             `bson:"discordId" json:"id"`
+	Username            string             `bson:"username" json:"username"`
+	GlobalName          string             `bson:"globalName" json:"globalName"`
+	Email               string             `bson:"email" json:"email"`
+	Avatar              string             `bson:"avatar" json:"avatar"`
+	LinkedMinecraft     string             `bson:"linkedMinecraft,omitempty" json:"linkedMinecraft,omitempty"`
+	RPFirstName         string             `bson:"rpFirstName,omitempty" json:"rpFirstName,omitempty"`
+	RPLastName          string             `bson:"rpLastName,omitempty" json:"rpLastName,omitempty"`
+	MinecraftVerifiedAt *time.Time         `bson:"minecraftVerifiedAt,omitempty" json:"minecraftVerifiedAt,omitempty"`
+	CreatedAt           time.Time          `bson:"createdAt,omitempty" json:"createdAt,omitempty"`
+	UpdatedAt           time.Time          `bson:"updatedAt,omitempty" json:"updatedAt,omitempty"`
 }
 
 type discordMeResponse struct {
@@ -221,16 +223,6 @@ func (h *DiscordAuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		options.Update().SetUpsert(true),
 	)
 
-	_, _ = h.userCollection.UpdateOne(
-		ctx,
-		bson.M{"discordId": user.ID},
-		mongo.Pipeline{
-			{{Key: "$set", Value: bson.M{
-				"createdAt": bson.M{"$ifNull": []any{"$createdAt", time.Now().UTC()}},
-			}}},
-		},
-	)
-
 	setSessionCookie(w, r, h.frontendURL, user.ID)
 
 	redirectTo := h.frontendURL
@@ -313,7 +305,14 @@ func (h *DiscordAuthHandler) PublicProfile(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	writeJSON(w, http.StatusOK, publicProfileResponse{Profile: toPublicProfile(user)})
+	profile := toPublicProfile(user)
+	if earliest := h.earliestKnownJoinAt(ctx, user.DiscordID); earliest != nil {
+		if profile.JoinedAt == nil || earliest.Before(*profile.JoinedAt) {
+			profile.JoinedAt = earliest
+		}
+	}
+
+	writeJSON(w, http.StatusOK, publicProfileResponse{Profile: profile})
 }
 
 func resolveCookieOptions(frontendURL string, r *http.Request) (string, bool) {
@@ -415,9 +414,68 @@ func toPublicProfile(user discordUserDoc) *publicProfile {
 		RPFirstName:     user.RPFirstName,
 		RPLastName:      user.RPLastName,
 	}
+
+	var joinedAt time.Time
 	if !user.CreatedAt.IsZero() {
-		createdAt := user.CreatedAt.UTC()
-		profile.JoinedAt = &createdAt
+		joinedAt = user.CreatedAt.UTC()
 	}
+	if !user.ID.IsZero() {
+		idCreatedAt := user.ID.Timestamp().UTC()
+		if joinedAt.IsZero() || idCreatedAt.Before(joinedAt) {
+			joinedAt = idCreatedAt
+		}
+	}
+	if !joinedAt.IsZero() {
+		profile.JoinedAt = &joinedAt
+	}
+
 	return profile
+}
+
+func (h *DiscordAuthHandler) earliestKnownJoinAt(ctx context.Context, discordID string) *time.Time {
+	if strings.TrimSpace(discordID) == "" {
+		return nil
+	}
+
+	type createdAtDoc struct {
+		CreatedAt time.Time `bson:"createdAt"`
+	}
+
+	findEarliest := func(collection *mongo.Collection, filter bson.M) *time.Time {
+		if collection == nil {
+			return nil
+		}
+
+		var result createdAtDoc
+		err := collection.FindOne(
+			ctx,
+			filter,
+			options.FindOne().
+				SetSort(bson.D{{Key: "createdAt", Value: 1}}).
+				SetProjection(bson.M{"createdAt": 1}),
+		).Decode(&result)
+		if err != nil || result.CreatedAt.IsZero() {
+			return nil
+		}
+
+		createdAt := result.CreatedAt.UTC()
+		return &createdAt
+	}
+
+	candidates := []*time.Time{
+		findEarliest(h.rpCollection, bson.M{"discordId": discordID}),
+		findEarliest(h.codeCollection, bson.M{"discordId": discordID}),
+	}
+
+	var earliest *time.Time
+	for _, candidate := range candidates {
+		if candidate == nil {
+			continue
+		}
+		if earliest == nil || candidate.Before(*earliest) {
+			earliest = candidate
+		}
+	}
+
+	return earliest
 }
