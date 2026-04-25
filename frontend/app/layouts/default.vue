@@ -16,7 +16,8 @@ import TopBar from '~/components/TopBar.vue'
 import { useAuth } from '~/composables/useAuth'
 
 const config = useRuntimeConfig()
-const { authenticated } = useAuth()
+const router = useRouter()
+const { authenticated, user } = useAuth()
 
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 let stopAuthWatch: (() => void) | null = null
@@ -53,6 +54,16 @@ const handleVisibility = () => {
   void pingPresence(isTabActive())
 }
 
+const consumePostLoginAction = async () => {
+  if (!import.meta.client || !authenticated.value || !user.value?.id) return
+
+  const action = sessionStorage.getItem('amy:post-login-action')
+  if (action !== 'rp-application') return
+
+  sessionStorage.removeItem('amy:post-login-action')
+  await router.push(`/u/${user.value.id}?apply=1`)
+}
+
 onMounted(() => {
   stopAuthWatch = watch(
     authenticated,
@@ -60,6 +71,7 @@ onMounted(() => {
       if (value) {
         startHeartbeat()
         void pingPresence(isTabActive())
+        void consumePostLoginAction()
         return
       }
       stopHeartbeat()
@@ -71,6 +83,13 @@ onMounted(() => {
   window.addEventListener('focus', handleVisibility)
   window.addEventListener('blur', handleVisibility)
 })
+
+watch(
+  () => user.value?.id,
+  () => {
+    void consumePostLoginAction()
+  }
+)
 
 onBeforeUnmount(() => {
   stopHeartbeat()
@@ -104,11 +123,17 @@ onBeforeUnmount(() => {
 
 @media (max-width: 1024px) {
   .app-content {
-    padding: 16px;
+    padding: 16px 16px 0 92px;
   }
 
   .app-main {
     padding: 0;
+  }
+}
+
+@media (max-width: 900px) {
+  .app-content {
+    padding: 72px 16px 0;
   }
 }
 </style>

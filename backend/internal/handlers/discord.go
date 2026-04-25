@@ -440,6 +440,7 @@ func setSessionCookie(w http.ResponseWriter, r *http.Request, frontendURL, value
 		SameSite: http.SameSiteLaxMode,
 		Secure:   secureCookie,
 		Expires:  time.Now().Add(30 * 24 * time.Hour),
+		MaxAge:   30 * 24 * 60 * 60,
 	}
 	if cookieDomain != "" {
 		cookie.Domain = cookieDomain

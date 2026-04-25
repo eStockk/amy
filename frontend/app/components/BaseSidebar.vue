@@ -1,9 +1,22 @@
 ﻿<template>
   <div>
+    <button
+      v-if="!isOpen"
+      class="mobile-menu"
+      type="button"
+      aria-label="Открыть меню"
+      :aria-expanded="isOpen"
+      @click="toggle"
+    >
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+
     <div v-if="isOpen" class="overlay" @click="close"></div>
     <aside class="sidebar" :class="{ open: isOpen }">
       <div class="logo">
-        <button class="toggle" type="button" @click="toggle" aria-label="Открыть меню">M</button>
+        <button class="toggle" type="button" @click="close" aria-label="Закрыть меню">x</button>
         <span class="logo-mark">
           <img :src="logo" alt="Amy logo" />
         </span>
@@ -30,10 +43,6 @@
         <NuxtLink class="nav-link" to="/faq" @click="close">
           <span class="icon">F</span>
           <span class="label">F.A.Q</span>
-        </NuxtLink>
-        <NuxtLink class="nav-link" to="/map" @click="close">
-          <span class="icon">M</span>
-          <span class="label">Карта</span>
         </NuxtLink>
         <NuxtLink class="nav-link" to="/docs" @click="close">
           <span class="icon">D</span>
@@ -121,6 +130,31 @@ watch(
   z-index: 30;
 }
 
+.mobile-menu {
+  display: none;
+  position: fixed;
+  top: 14px;
+  left: 14px;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(26, 27, 34, 0.92);
+  color: var(--text);
+  cursor: pointer;
+  z-index: 50;
+  padding: 10px;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.35);
+}
+
+.mobile-menu span {
+  display: block;
+  width: 100%;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
 .sidebar {
   position: fixed;
   top: 0;
@@ -157,7 +191,7 @@ watch(
   display: none;
   position: absolute;
   top: 0;
-  left: 0;
+  right: 0;
   width: 32px;
   height: 32px;
   border-radius: 8px;
@@ -335,8 +369,17 @@ watch(
 }
 
 @media (max-width: 900px) {
+  .mobile-menu {
+    display: grid;
+    gap: 5px;
+    place-content: center;
+  }
+
   .sidebar {
-    width: 64px;
+    width: min(86vw, 280px);
+    max-width: 280px;
+    transform: translateX(-100%);
+    transition: transform 0.28s ease, box-shadow 0.28s ease;
   }
 
   .toggle {
@@ -345,18 +388,32 @@ watch(
   }
 
   .sidebar:hover {
-    width: 64px;
-    box-shadow: inset -12px 0 24px rgba(0, 0, 0, 0.55);
+    width: min(86vw, 280px);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
   }
 
   .sidebar.open {
-    width: min(82vw, 260px);
+    width: min(86vw, 280px);
+    transform: translateX(0);
   }
 
+  .sidebar .label,
+  .sidebar .logo-text,
   .sidebar:hover .label,
-  .sidebar:hover .logo-text {
-    opacity: 0;
-    transform: translateX(-8px);
+  .sidebar:hover .logo-text,
+  .sidebar.open .label,
+  .sidebar.open .logo-text {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  .sidebar-footer {
+    min-width: 0;
+  }
+
+  .pill,
+  .user-card {
+    min-width: 0;
   }
 }
 </style>

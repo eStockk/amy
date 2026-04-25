@@ -35,6 +35,9 @@
           :title="item.title"
           :intro="item.intro"
           :tags="item.tags"
+          :source="item.source"
+          :url="item.url"
+          :created-at="item.createdAt"
           :variant="item.variant"
         />
       </div>
@@ -62,10 +65,8 @@
       <div class="footer-about">
         <h3>Играй в MineCraft на сервере Amy!</h3>
         <p>
-          Это приватный сервер Minecraft с ванильным выживанием. Открытый мир,
-          самописные плагины, голосовой чат и тёплое сообщество. Никаких донатов,
-          экономики или телепортаций — только чистый геймплей, творчество и
-          стабильность с 2019 года!
+          Это приватный сервер Minecraft с кастомным выживанием. Открытый мир,
+          самописные плагины, голосовой чат и тёплое сообщество. Никаких донатов.
         </p>
         <div class="footer-logo">
           <img :src="logo" alt="Amy logo" />

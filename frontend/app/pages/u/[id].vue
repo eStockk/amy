@@ -220,6 +220,7 @@ type PublicProfileResponse = {
 }
 
 const route = useRoute()
+const router = useRouter()
 const config = useRuntimeConfig()
 
 const {
@@ -366,6 +367,21 @@ const formatDate = (raw?: string, dateOnly = false) => {
   }).format(parsed)
 }
 
+const maybeOpenApplicationFromQuery = async () => {
+  if (!isOwner.value || route.query.apply !== '1') return
+
+  if (applicationAccepted.value) {
+    submitError.value = true
+    submitMessage.value = acceptedSubmitErrorText
+  } else {
+    rpModalOpen.value = true
+  }
+
+  const query = { ...route.query }
+  delete query.apply
+  await router.replace({ path: route.path, query })
+}
+
 const loadProfile = async () => {
   if (!profileId.value) {
     errorMessage.value = 'Некорректная ссылка профиля.'
@@ -399,6 +415,8 @@ const loadProfile = async () => {
       }
       fillFromCurrentState(user.value)
     }
+
+    await maybeOpenApplicationFromQuery()
   } catch (error: unknown) {
     const message = (error as { data?: { error?: string } })?.data?.error
     errorMessage.value = message || 'Не удалось загрузить профиль.'

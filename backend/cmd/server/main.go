@@ -34,7 +34,8 @@ func main() {
 
 	healthHandler := handlers.NewHealthHandler(database)
 	playerHandler := handlers.NewPlayerHandler(database)
-	newsHandler := handlers.NewNewsHandler(database)
+	newsHandler := handlers.NewNewsHandler(database, cfg.TelegramNewsChannel, cfg.DiscordBotToken, cfg.DiscordNewsChannelID)
+	serverStatusHandler := handlers.NewServerStatusHandler(cfg.MinecraftServerAddr)
 	authHandler := handlers.NewAuthHandler(database)
 	supportHandler := handlers.NewSupportHandler(database, cfg.DiscordTicketWebhook)
 	discordHandler := handlers.NewDiscordAuthHandler(
@@ -60,6 +61,7 @@ func main() {
 	mux.HandleFunc("/api/players", playerHandler.List)
 	mux.HandleFunc("/api/players/register", playerHandler.Register)
 	mux.HandleFunc("/api/news", newsHandler.List)
+	mux.HandleFunc("/api/server/status", serverStatusHandler.Handle)
 	mux.HandleFunc("/api/auth/register", authHandler.Register)
 	mux.HandleFunc("/api/auth/login", authHandler.Login)
 	mux.HandleFunc("/api/auth/discord/start", discordHandler.Start)

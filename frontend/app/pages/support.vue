@@ -2,7 +2,7 @@
   <div class="support">
     <div class="card">
       <h1>Поддержка</h1>
-      <p>Оставьте тикет — мы ответим в ближайшее время.</p>
+      <p>Оставьте тикет - мы ответим в ближайшее время.</p>
       <form @submit.prevent="submit">
         <label>
           Имя *

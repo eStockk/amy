@@ -13,6 +13,10 @@
 <script setup lang="ts">
 import SectionTitle from '~/components/SectionTitle.vue'
 import ContentPanel from '~/components/ContentPanel.vue'
+
+definePageMeta({
+  redirect: '/'
+})
 </script>
 
 <style scoped>

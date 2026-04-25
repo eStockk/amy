@@ -7,6 +7,9 @@ type News struct {
 	Title     string    `bson:"title" json:"title"`
 	Intro     string    `bson:"intro" json:"intro"`
 	Tags      []string  `bson:"tags" json:"tags"`
+	Source    string    `bson:"source,omitempty" json:"source,omitempty"`
+	URL       string    `bson:"url,omitempty" json:"url,omitempty"`
+	Variant   string    `bson:"variant,omitempty" json:"variant,omitempty"`
 	CreatedAt time.Time `bson:"createdAt" json:"createdAt"`
 }
 

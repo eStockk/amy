@@ -4,19 +4,20 @@
       <p class="eyebrow">Добро пожаловать!</p>
       <h1>AMY</h1>
       <p class="lead">
-        Приватный сервер с атмосферой ванили и авторскими сюжетами. Мы строим
+        Приватный сервер с кастомным выживанием и авторскими сюжетами. Мы строим
         мир вокруг ролевых линий, редких механик и теплого комьюнити.
       </p>
       <div class="stats">
-        <span class="status"><span class="dot"></span> 126 / 300 играют сейчас</span>
+        <span class="status" :class="{ offline: !serverOnline }">
+          <span class="dot"></span>
+          {{ onlineLabel }}
+        </span>
         <div class="pills">
-          <span>mc.amyworld.com</span>
-          <span>eu2.amyworld.com</span>
-          <span>eu3.amyworld.com</span>
+          <span>{{ serverAddress }}</span>
         </div>
       </div>
       <div class="actions">
-        <button class="primary" type="button">Подать заявку</button>
+        <button class="primary" type="button" @click="startApplication">Подать заявку</button>
         <button class="ghost" type="button">Трейлер</button>
       </div>
     </div>
@@ -29,6 +30,41 @@
 
 <script setup lang="ts">
 import logo from '~/assets/amy-logo.png'
+import { useAuth } from '~/composables/useAuth'
+import { useServerStatus } from '~/composables/useServerStatus'
+
+const router = useRouter()
+const { authenticated, user, loginUrl, refresh } = useAuth()
+const { status, pending: statusPending } = useServerStatus()
+
+const serverAddress = computed(() => status.value?.address || 'play.amy-world.ru')
+const serverOnline = computed(() => Boolean(status.value?.online))
+const onlineLabel = computed(() => {
+  if (statusPending.value) return 'Проверяем онлайн'
+  if (!serverOnline.value) return 'Сервер недоступен'
+
+  const online = status.value?.players?.online ?? 0
+  const max = status.value?.players?.max ?? 0
+  return max > 0 ? `${online} / ${max} играют сейчас` : `${online} играют сейчас`
+})
+
+const startApplication = async () => {
+  try {
+    await refresh()
+  } catch {
+    // Auth refresh is best-effort before deciding where to send the player.
+  }
+
+  if (authenticated.value && user.value?.id) {
+    await router.push(`/u/${user.value.id}?apply=1`)
+    return
+  }
+
+  if (import.meta.client) {
+    sessionStorage.setItem('amy:post-login-action', 'rp-application')
+    window.location.href = loginUrl.value
+  }
+}
 </script>
 
 <style scoped>
@@ -89,6 +125,11 @@ h1 {
   box-shadow: 0 0 12px rgba(72, 245, 121, 0.8);
 }
 
+.status.offline .dot {
+  background: #e49a38;
+  box-shadow: 0 0 12px rgba(228, 154, 56, 0.7);
+}
+
 .pills {
   display: flex;
   flex-wrap: wrap;
@@ -122,6 +163,8 @@ h1 {
 .primary {
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
   border: none;
+  color: #0b0b0f;
+  font-weight: 600;
 }
 
 .hero-media {

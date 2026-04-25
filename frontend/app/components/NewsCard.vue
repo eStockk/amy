@@ -6,20 +6,39 @@
       </div>
       <button class="like" type="button">♡</button>
     </div>
+    <div v-if="source || formattedDate" class="meta">
+      <span v-if="source">{{ source }}</span>
+      <span v-if="formattedDate">{{ formattedDate }}</span>
+    </div>
     <h4>{{ title }}</h4>
     <p>{{ intro }}</p>
-    <button class="primary" type="button">Подробнее</button>
+    <a v-if="url" class="primary" :href="url" target="_blank" rel="noreferrer">Открыть пост</a>
+    <button v-else class="primary" type="button">Подробнее</button>
     <div class="media" :class="variant"></div>
   </article>
 </template>
 
 <script setup lang="ts">
-defineProps<{
+const props = defineProps<{
   title: string
   intro: string
   tags: string[]
+  source?: string
+  url?: string
+  createdAt?: string
   variant?: 'pink' | 'blue' | 'green'
 }>()
+
+const formattedDate = computed(() => {
+  if (!props.createdAt) return ''
+  const parsed = new Date(props.createdAt)
+  if (Number.isNaN(parsed.getTime())) return ''
+
+  return new Intl.DateTimeFormat('ru-RU', {
+    day: '2-digit',
+    month: 'short'
+  }).format(parsed)
+})
 </script>
 
 <style scoped>
@@ -59,6 +78,20 @@ defineProps<{
   color: var(--muted);
 }
 
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.meta span + span::before {
+  content: '/';
+  margin-right: 8px;
+  color: rgba(255, 255, 255, 0.28);
+}
+
 .like {
   border-radius: 50%;
   border: 1px solid var(--stroke);
@@ -88,6 +121,9 @@ p {
   color: #fff;
   width: max-content;
   cursor: pointer;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .media {
