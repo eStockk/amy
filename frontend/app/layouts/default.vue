@@ -22,7 +22,7 @@ const { authenticated, user } = useAuth()
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 let stopAuthWatch: (() => void) | null = null
 
-const isTabActive = () => document.visibilityState === 'visible' && document.hasFocus()
+const isTabActive = () => document.visibilityState === 'visible'
 
 const pingPresence = async (active: boolean) => {
   if (!authenticated.value) return
@@ -54,6 +54,10 @@ const handleVisibility = () => {
   void pingPresence(isTabActive())
 }
 
+const handlePageHide = () => {
+  void pingPresence(false)
+}
+
 const consumePostLoginAction = async () => {
   if (!import.meta.client || !authenticated.value || !user.value?.id) return
 
@@ -80,8 +84,7 @@ onMounted(() => {
   )
 
   document.addEventListener('visibilitychange', handleVisibility)
-  window.addEventListener('focus', handleVisibility)
-  window.addEventListener('blur', handleVisibility)
+  window.addEventListener('pagehide', handlePageHide)
 })
 
 watch(
@@ -96,8 +99,7 @@ onBeforeUnmount(() => {
   stopAuthWatch?.()
   stopAuthWatch = null
   document.removeEventListener('visibilitychange', handleVisibility)
-  window.removeEventListener('focus', handleVisibility)
-  window.removeEventListener('blur', handleVisibility)
+  window.removeEventListener('pagehide', handlePageHide)
   void pingPresence(false)
 })
 </script>

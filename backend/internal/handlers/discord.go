@@ -47,20 +47,21 @@ type discordUser struct {
 }
 
 type discordUserDoc struct {
-	ID                  primitive.ObjectID `bson:"_id,omitempty"`
-	DiscordID           string             `bson:"discordId" json:"id"`
-	Username            string             `bson:"username" json:"username"`
-	GlobalName          string             `bson:"globalName" json:"globalName"`
-	Email               string             `bson:"email" json:"email"`
-	Avatar              string             `bson:"avatar" json:"avatar"`
-	LinkedMinecraft     string             `bson:"linkedMinecraft,omitempty" json:"linkedMinecraft,omitempty"`
-	RPFirstName         string             `bson:"rpFirstName,omitempty" json:"rpFirstName,omitempty"`
-	RPLastName          string             `bson:"rpLastName,omitempty" json:"rpLastName,omitempty"`
-	MinecraftVerifiedAt *time.Time         `bson:"minecraftVerifiedAt,omitempty" json:"minecraftVerifiedAt,omitempty"`
-	LastSeenAt          *time.Time         `bson:"lastSeenAt,omitempty" json:"lastSeenAt,omitempty"`
-	PresenceActive      bool               `bson:"presenceActive,omitempty" json:"presenceActive,omitempty"`
-	CreatedAt           time.Time          `bson:"createdAt,omitempty" json:"createdAt,omitempty"`
-	UpdatedAt           time.Time          `bson:"updatedAt,omitempty" json:"updatedAt,omitempty"`
+	ID                   primitive.ObjectID `bson:"_id,omitempty"`
+	DiscordID            string             `bson:"discordId" json:"id"`
+	Username             string             `bson:"username" json:"username"`
+	GlobalName           string             `bson:"globalName" json:"globalName"`
+	Email                string             `bson:"email" json:"email"`
+	Avatar               string             `bson:"avatar" json:"avatar"`
+	LinkedMinecraft      string             `bson:"linkedMinecraft,omitempty" json:"linkedMinecraft,omitempty"`
+	RPFirstName          string             `bson:"rpFirstName,omitempty" json:"rpFirstName,omitempty"`
+	RPLastName           string             `bson:"rpLastName,omitempty" json:"rpLastName,omitempty"`
+	MinecraftVerifiedAt  *time.Time         `bson:"minecraftVerifiedAt,omitempty" json:"minecraftVerifiedAt,omitempty"`
+	LastSeenAt           *time.Time         `bson:"lastSeenAt,omitempty" json:"lastSeenAt,omitempty"`
+	PresenceActive       bool               `bson:"presenceActive,omitempty" json:"presenceActive,omitempty"`
+	FirstAuthenticatedAt *time.Time         `bson:"firstAuthenticatedAt,omitempty" json:"-"`
+	CreatedAt            time.Time          `bson:"createdAt,omitempty" json:"createdAt,omitempty"`
+	UpdatedAt            time.Time          `bson:"updatedAt,omitempty" json:"updatedAt,omitempty"`
 }
 
 type discordMeResponse struct {
@@ -213,6 +214,7 @@ func (h *DiscordAuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
+	now := time.Now().UTC()
 	_, _ = h.userCollection.UpdateOne(
 		ctx,
 		bson.M{"discordId": user.ID},
@@ -223,10 +225,11 @@ func (h *DiscordAuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 				"globalName": user.GlobalName,
 				"email":      user.Email,
 				"avatar":     user.Avatar,
-				"updatedAt":  time.Now().UTC(),
+				"updatedAt":  now,
 			},
 			"$setOnInsert": bson.M{
-				"createdAt": time.Now().UTC(),
+				"createdAt":            now,
+				"firstAuthenticatedAt": now,
 			},
 		},
 		options.Update().SetUpsert(true),
@@ -335,11 +338,6 @@ func (h *DiscordAuthHandler) PublicProfile(w http.ResponseWriter, r *http.Reques
 	}
 
 	profile := toPublicProfile(user, time.Now().UTC())
-	if earliest := h.earliestKnownJoinAt(ctx, user.DiscordID); earliest != nil {
-		if profile.JoinedAt == nil || earliest.Before(*profile.JoinedAt) {
-			profile.JoinedAt = earliest
-		}
-	}
 
 	writeJSON(w, http.StatusOK, publicProfileResponse{Profile: profile})
 }
@@ -388,14 +386,6 @@ func (h *DiscordAuthHandler) publicProfileFromRPApplication(ctx context.Context,
 		if len(parts) > 1 {
 			profile.RPLastName = strings.Join(parts[1:], " ")
 		}
-	}
-
-	joinedAt := latest.CreatedAt.UTC()
-	if joinedAt.IsZero() {
-		joinedAt = latest.UpdatedAt.UTC()
-	}
-	if !joinedAt.IsZero() {
-		profile.JoinedAt = &joinedAt
 	}
 
 	return profile, nil
@@ -515,68 +505,18 @@ func toPublicProfile(user discordUserDoc, now time.Time) *publicProfile {
 	}
 
 	var joinedAt time.Time
-	if !user.CreatedAt.IsZero() {
+	if user.FirstAuthenticatedAt != nil && !user.FirstAuthenticatedAt.IsZero() {
+		joinedAt = user.FirstAuthenticatedAt.UTC()
+	} else if !user.ID.IsZero() {
+		joinedAt = user.ID.Timestamp().UTC()
+	} else if !user.CreatedAt.IsZero() {
 		joinedAt = user.CreatedAt.UTC()
-	}
-	if !user.ID.IsZero() {
-		idCreatedAt := user.ID.Timestamp().UTC()
-		if joinedAt.IsZero() || idCreatedAt.Before(joinedAt) {
-			joinedAt = idCreatedAt
-		}
 	}
 	if !joinedAt.IsZero() {
 		profile.JoinedAt = &joinedAt
 	}
 
 	return profile
-}
-
-func (h *DiscordAuthHandler) earliestKnownJoinAt(ctx context.Context, discordID string) *time.Time {
-	if strings.TrimSpace(discordID) == "" {
-		return nil
-	}
-
-	type createdAtDoc struct {
-		CreatedAt time.Time `bson:"createdAt"`
-	}
-
-	findEarliest := func(collection *mongo.Collection, filter bson.M) *time.Time {
-		if collection == nil {
-			return nil
-		}
-
-		var result createdAtDoc
-		err := collection.FindOne(
-			ctx,
-			filter,
-			options.FindOne().
-				SetSort(bson.D{{Key: "createdAt", Value: 1}}).
-				SetProjection(bson.M{"createdAt": 1}),
-		).Decode(&result)
-		if err != nil || result.CreatedAt.IsZero() {
-			return nil
-		}
-
-		createdAt := result.CreatedAt.UTC()
-		return &createdAt
-	}
-
-	candidates := []*time.Time{
-		findEarliest(h.rpCollection, bson.M{"discordId": discordID}),
-		findEarliest(h.codeCollection, bson.M{"discordId": discordID}),
-	}
-
-	var earliest *time.Time
-	for _, candidate := range candidates {
-		if candidate == nil {
-			continue
-		}
-		if earliest == nil || candidate.Before(*earliest) {
-			earliest = candidate
-		}
-	}
-
-	return earliest
 }
 
 func parseDiscordIDSet(raw string) map[string]struct{} {
@@ -616,9 +556,18 @@ func (h *DiscordAuthHandler) RunMigrations(ctx context.Context) error {
 		return err
 	}
 
+	if err := h.migrateFirstAuthenticatedAt(ctx); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (h *DiscordAuthHandler) migrateFirstAuthenticatedAt(ctx context.Context) error {
 	cursor, err := h.userCollection.Find(ctx, bson.M{}, options.Find().SetProjection(bson.M{
-		"discordId": 1,
-		"createdAt": 1,
+		"discordId":            1,
+		"createdAt":            1,
+		"firstAuthenticatedAt": 1,
 	}))
 	if err != nil {
 		return err
@@ -635,31 +584,32 @@ func (h *DiscordAuthHandler) RunMigrations(ctx context.Context) error {
 			continue
 		}
 
-		current := user.CreatedAt
-		target := current
-
-		if target.IsZero() && !user.ID.IsZero() {
-			target = user.ID.Timestamp().UTC()
-		}
-
-		if earliest := h.earliestKnownJoinAt(ctx, user.DiscordID); earliest != nil {
-			if target.IsZero() || earliest.Before(target) {
-				target = *earliest
-			}
-		}
-
-		if target.IsZero() {
+		if user.FirstAuthenticatedAt != nil && !user.FirstAuthenticatedAt.IsZero() {
 			continue
 		}
 
-		if !current.IsZero() && (current.Equal(target) || current.Before(target)) {
+		if !user.ID.IsZero() {
+			target := user.ID.Timestamp().UTC()
+			_, err = h.userCollection.UpdateOne(
+				ctx,
+				bson.M{"discordId": user.DiscordID},
+				bson.M{"$set": bson.M{"firstAuthenticatedAt": target}},
+			)
+			if err != nil {
+				return err
+			}
+			continue
+		}
+
+		target := user.CreatedAt.UTC()
+		if target.IsZero() {
 			continue
 		}
 
 		_, err = h.userCollection.UpdateOne(
 			ctx,
 			bson.M{"discordId": user.DiscordID},
-			bson.M{"$set": bson.M{"createdAt": target}},
+			bson.M{"$set": bson.M{"firstAuthenticatedAt": target}},
 		)
 		if err != nil {
 			return err
