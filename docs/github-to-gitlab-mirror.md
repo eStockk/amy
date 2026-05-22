@@ -58,4 +58,6 @@ namespace/project
 
 ## Important
 
-GitLab becomes a mirror target. Do not make direct commits in GitLab unless you also push them back to GitHub, because the next GitHub push will overwrite `main` in GitLab.
+GitLab becomes a mirror target. Do not make direct commits in GitLab unless you also push them back to GitHub, because the next GitHub push expects GitLab `main` to be a fast-forward update from GitHub.
+
+If the workflow fails with a non-fast-forward error, GitLab `main` has commits that are not in GitHub. In that case, either merge those commits back into GitHub or reset GitLab `main` once.
