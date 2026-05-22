@@ -172,25 +172,23 @@
     {
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 4 },
       "id": 8,
       "targets": [
-        { "expr": "sum(increase(amy_backend_http_requests_total[5m])) by (client_ip)", "legendFormat": "backend {{client_ip}}" },
-        { "expr": "sum(increase(amy_frontend_http_requests_total[5m])) by (client_ip)", "legendFormat": "frontend {{client_ip}}" }
+        { "expr": "topk(8, sum by (client_ip) (increase(amy_backend_http_requests_total{client_ip!=\"unknown\"}[15m])))", "legendFormat": "{{client_ip}}" }
       ],
-      "title": "Requests By IP Over 5 Minutes",
-      "type": "timeseries"
+      "title": "Backend IPs Last 15 Minutes",
+      "type": "bargauge"
     },
     {
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 12 },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 4 },
       "id": 9,
       "targets": [
-        { "expr": "topk(10, sum(increase(amy_backend_http_requests_total[15m])) by (client_ip))", "legendFormat": "backend {{client_ip}}" },
-        { "expr": "topk(10, sum(increase(amy_frontend_http_requests_total[15m])) by (client_ip))", "legendFormat": "frontend {{client_ip}}" }
+        { "expr": "topk(8, sum by (client_ip) (increase(amy_frontend_http_requests_total{client_ip!=\"unknown\"}[15m])))", "legendFormat": "{{client_ip}}" }
       ],
-      "title": "Top Client IPs Last 15 Minutes",
+      "title": "Frontend IPs Last 15 Minutes",
       "type": "bargauge"
     },
     {
