@@ -4,7 +4,7 @@ stages:
   - deploy
 
 variables:
-  DEPLOY_PATH: "/deploy/amy"
+  DEPLOY_PATH: "/opt/amy/app"
   DOCKER_COMPOSE_FILE: "docker-compose.yml"
   COMPOSE_PROJECT_NAME: "app"
 
@@ -62,21 +62,21 @@ deploy:production:
     - docker version
     - test -d "$DEPLOY_PATH"
   script:
-    - >
-      rsync -az --delete
-      --exclude ".git"
-      --exclude ".env"
-      --exclude "node_modules"
-      --exclude ".output"
-      --exclude ".nuxt"
-      --exclude "backend/.go"
-      ./ "$DEPLOY_PATH/"
-    - >
+    - |
+      rsync -az --delete \
+        --exclude ".git" \
+        --exclude ".env" \
+        --exclude "node_modules" \
+        --exclude ".output" \
+        --exclude ".nuxt" \
+        --exclude "backend/.go" \
+        ./ "$DEPLOY_PATH/"
+    - |
       cd "$DEPLOY_PATH"
-      && docker rm -f amy_caddy >/dev/null 2>&1 || true
-      && docker compose -p "$COMPOSE_PROJECT_NAME" -f docker-compose.yml down --remove-orphans
-      && docker compose -p "$COMPOSE_PROJECT_NAME" -f docker-compose.yml up -d --build
-      && docker image prune -f
+      docker rm -f amy_caddy >/dev/null 2>&1 || true
+      docker compose -p "$COMPOSE_PROJECT_NAME" -f docker-compose.yml down --remove-orphans
+      docker compose -p "$COMPOSE_PROJECT_NAME" -f docker-compose.yml up -d --build
+      docker image prune -f
   environment:
     name: production
     url: https://amyworld.ru

@@ -19,14 +19,14 @@ The runner is registered as:
 amy-vps-docker
 ```
 
-With the new GitLab runner authentication tokens, tags and "run untagged jobs" are controlled in the GitLab UI when the runner is created. The pipeline intentionally does not require tags, so it can run on this project runner without extra YAML changes.
+With the new GitLab runner authentication tokens, tags and "run untagged jobs" are controlled in the GitLab UI when the runner is created. The deploy job uses the `amy-vps-docker` tag so deployment only runs on the VPS runner.
 
 The runner uses Docker executor and mounts:
 
 | Host path | Job container path | Purpose |
 | --- | --- | --- |
 | `/var/run/docker.sock` | `/var/run/docker.sock` | Let deploy job control host Docker |
-| `/opt/amy/app` | `/deploy/amy` | Deploy target workspace |
+| `/opt/amy/app` | `/opt/amy/app` | Deploy target workspace |
 | runner cache volume | `/cache` | GitLab Runner cache |
 
 The pipeline uses `COMPOSE_PROJECT_NAME=app` to keep existing Docker volumes and container names compatible with the previous manual deployment.
@@ -52,7 +52,7 @@ docker run --rm \
   --docker-pull-policy "if-not-present" \
   --docker-volumes "/cache" \
   --docker-volumes "/var/run/docker.sock:/var/run/docker.sock" \
-  --docker-volumes "/opt/amy/app:/deploy/amy"
+  --docker-volumes "/opt/amy/app:/opt/amy/app"
 
 docker run -d \
   --name gitlab-runner \
@@ -70,7 +70,7 @@ The VPS must have:
 
 ```bash
 apt update
-apt install -y docker.io docker-compose
+apt install -y docker.io
 ```
 
 The production env file must exist and stay on the server:
