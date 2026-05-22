@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"html"
 	"io"
@@ -14,13 +15,10 @@ import (
 	"time"
 
 	"amy/minecraft-server/internal/models"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type NewsHandler struct {
-	collection       *mongo.Collection
+	db               *sql.DB
 	telegramChannel  string
 	discordBotToken  string
 	discordChannelID string
@@ -48,9 +46,9 @@ var (
 	newsVariantList = []string{"pink", "blue", "green"}
 )
 
-func NewNewsHandler(db *mongo.Database, telegramChannel, discordBotToken, discordChannelID string) *NewsHandler {
+func NewNewsHandler(db *sql.DB, telegramChannel, discordBotToken, discordChannelID string) *NewsHandler {
 	return &NewsHandler{
-		collection:       db.Collection("news"),
+		db:               db,
 		telegramChannel:  strings.TrimSpace(telegramChannel),
 		discordBotToken:  strings.TrimSpace(discordBotToken),
 		discordChannelID: strings.TrimSpace(discordChannelID),
@@ -100,15 +98,32 @@ func (h *NewsHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *NewsHandler) listStoredNews(ctx context.Context, limit int64) ([]models.News, error) {
-	opts := options.Find().SetSort(bson.D{{Key: "createdAt", Value: -1}}).SetLimit(limit)
-	cursor, err := h.collection.Find(ctx, bson.M{}, opts)
+	rows, err := h.db.QueryContext(
+		ctx,
+		`SELECT id, title, intro, array_to_string(tags, ','), source, url, variant, created_at
+		 FROM news
+		 ORDER BY created_at DESC
+		 LIMIT $1`,
+		limit,
+	)
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(ctx)
+	defer rows.Close()
 
 	items := make([]models.News, 0)
-	if err := cursor.All(ctx, &items); err != nil {
+	for rows.Next() {
+		var item models.News
+		var rawTags string
+		if err := rows.Scan(&item.ID, &item.Title, &item.Intro, &rawTags, &item.Source, &item.URL, &item.Variant, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		if rawTags != "" {
+			item.Tags = strings.Split(rawTags, ",")
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 

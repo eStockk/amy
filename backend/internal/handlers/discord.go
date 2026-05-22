@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net"
@@ -10,14 +11,10 @@ import (
 	"regexp"
 	"strings"
 	"time"
-
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type DiscordAuthHandler struct {
+	db                   *sql.DB
 	clientID             string
 	clientSecret         string
 	redirectURL          string
@@ -26,9 +23,6 @@ type DiscordAuthHandler struct {
 	rpWebhookURL         string
 	rpModeratorIDs       map[string]struct{}
 	minecraftServerToken string
-	userCollection       *mongo.Collection
-	rpCollection         *mongo.Collection
-	codeCollection       *mongo.Collection
 }
 
 type discordTokenResponse struct {
@@ -47,21 +41,21 @@ type discordUser struct {
 }
 
 type discordUserDoc struct {
-	ID                   primitive.ObjectID `bson:"_id,omitempty"`
-	DiscordID            string             `bson:"discordId" json:"id"`
-	Username             string             `bson:"username" json:"username"`
-	GlobalName           string             `bson:"globalName" json:"globalName"`
-	Email                string             `bson:"email" json:"email"`
-	Avatar               string             `bson:"avatar" json:"avatar"`
-	LinkedMinecraft      string             `bson:"linkedMinecraft,omitempty" json:"linkedMinecraft,omitempty"`
-	RPFirstName          string             `bson:"rpFirstName,omitempty" json:"rpFirstName,omitempty"`
-	RPLastName           string             `bson:"rpLastName,omitempty" json:"rpLastName,omitempty"`
-	MinecraftVerifiedAt  *time.Time         `bson:"minecraftVerifiedAt,omitempty" json:"minecraftVerifiedAt,omitempty"`
-	LastSeenAt           *time.Time         `bson:"lastSeenAt,omitempty" json:"lastSeenAt,omitempty"`
-	PresenceActive       bool               `bson:"presenceActive,omitempty" json:"presenceActive,omitempty"`
-	FirstAuthenticatedAt *time.Time         `bson:"firstAuthenticatedAt,omitempty" json:"-"`
-	CreatedAt            time.Time          `bson:"createdAt,omitempty" json:"createdAt,omitempty"`
-	UpdatedAt            time.Time          `bson:"updatedAt,omitempty" json:"updatedAt,omitempty"`
+	DiscordID            string     `json:"id"`
+	Username             string     `json:"username"`
+	GlobalName           string     `json:"globalName"`
+	Email                string     `json:"email"`
+	Avatar               string     `json:"avatar"`
+	LinkedMinecraft      string     `json:"linkedMinecraft,omitempty"`
+	RPFirstName          string     `json:"rpFirstName,omitempty"`
+	RPLastName           string     `json:"rpLastName,omitempty"`
+	AcceptanceStatus     string     `json:"acceptanceStatus"`
+	MinecraftVerifiedAt  *time.Time `json:"minecraftVerifiedAt,omitempty"`
+	LastSeenAt           *time.Time `json:"lastSeenAt,omitempty"`
+	PresenceActive       bool       `json:"presenceActive,omitempty"`
+	FirstAuthenticatedAt *time.Time `json:"-"`
+	CreatedAt            time.Time  `json:"createdAt,omitempty"`
+	UpdatedAt            time.Time  `json:"updatedAt,omitempty"`
 }
 
 type discordMeResponse struct {
@@ -101,16 +95,18 @@ type publicProfile struct {
 }
 
 type rpApplicationSummaryOut struct {
-	ID          string     `json:"id"`
-	Status      string     `json:"status"`
-	Nickname    string     `json:"nickname"`
-	RPName      string     `json:"rpName,omitempty"`
-	Race        string     `json:"race,omitempty"`
-	Gender      string     `json:"gender,omitempty"`
-	BirthDate   string     `json:"birthDate,omitempty"`
-	CreatedAt   *time.Time `json:"createdAt,omitempty"`
-	UpdatedAt   *time.Time `json:"updatedAt,omitempty"`
-	ModeratedAt *time.Time `json:"moderatedAt,omitempty"`
+	ID           string     `json:"id"`
+	Status       string     `json:"status"`
+	Nickname     string     `json:"nickname"`
+	RPName       string     `json:"rpName,omitempty"`
+	Race         string     `json:"race,omitempty"`
+	Gender       string     `json:"gender,omitempty"`
+	HeightCm     int        `json:"heightCm,omitempty"`
+	BirthDate    string     `json:"birthDate,omitempty"`
+	PrisonReason string     `json:"prisonReason,omitempty"`
+	CreatedAt    *time.Time `json:"createdAt,omitempty"`
+	UpdatedAt    *time.Time `json:"updatedAt,omitempty"`
+	ModeratedAt  *time.Time `json:"moderatedAt,omitempty"`
 }
 
 var minecraftNicknameRe = regexp.MustCompile(`^[A-Za-z0-9_]{3,16}$`)
@@ -118,7 +114,7 @@ var minecraftNicknameRe = regexp.MustCompile(`^[A-Za-z0-9_]{3,16}$`)
 const presenceOnlineWindow = 75 * time.Second
 
 func NewDiscordAuthHandler(
-	db *mongo.Database,
+	db *sql.DB,
 	clientID,
 	clientSecret,
 	redirectURL,
@@ -129,6 +125,7 @@ func NewDiscordAuthHandler(
 	minecraftServerToken string,
 ) *DiscordAuthHandler {
 	return &DiscordAuthHandler{
+		db:                   db,
 		clientID:             clientID,
 		clientSecret:         clientSecret,
 		redirectURL:          redirectURL,
@@ -137,9 +134,6 @@ func NewDiscordAuthHandler(
 		rpWebhookURL:         rpWebhookURL,
 		rpModeratorIDs:       parseDiscordIDSet(rpModeratorIDsRaw),
 		minecraftServerToken: minecraftServerToken,
-		userCollection:       db.Collection("discord_users"),
-		rpCollection:         db.Collection("rp_applications"),
-		codeCollection:       db.Collection("minecraft_verification_codes"),
 	}
 }
 
@@ -215,25 +209,27 @@ func (h *DiscordAuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	now := time.Now().UTC()
-	_, _ = h.userCollection.UpdateOne(
+	_, err = h.db.ExecContext(
 		ctx,
-		bson.M{"discordId": user.ID},
-		bson.M{
-			"$set": bson.M{
-				"discordId":  user.ID,
-				"username":   user.Username,
-				"globalName": user.GlobalName,
-				"email":      user.Email,
-				"avatar":     user.Avatar,
-				"updatedAt":  now,
-			},
-			"$setOnInsert": bson.M{
-				"createdAt":            now,
-				"firstAuthenticatedAt": now,
-			},
-		},
-		options.Update().SetUpsert(true),
+		`INSERT INTO discord_users (discord_id, username, global_name, email, avatar, first_authenticated_at, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $6, $6)
+		 ON CONFLICT (discord_id) DO UPDATE SET
+		   username = EXCLUDED.username,
+		   global_name = EXCLUDED.global_name,
+		   email = EXCLUDED.email,
+		   avatar = EXCLUDED.avatar,
+		   updated_at = EXCLUDED.updated_at`,
+		user.ID,
+		user.Username,
+		user.GlobalName,
+		user.Email,
+		user.Avatar,
+		now,
 	)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save discord user")
+		return
+	}
 
 	setSessionCookie(w, r, h.frontendURL, user.ID)
 
@@ -255,8 +251,8 @@ func (h *DiscordAuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	var user discordUserDoc
-	if err := h.userCollection.FindOne(ctx, bson.M{"discordId": cookie.Value}).Decode(&user); err != nil {
+	user, err := h.loadDiscordUser(ctx, cookie.Value)
+	if err != nil {
 		writeJSON(w, http.StatusOK, discordMeResponse{Authenticated: false})
 		return
 	}
@@ -269,7 +265,7 @@ func (h *DiscordAuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		User: &discordUserOut{
 			ID:              user.DiscordID,
 			Username:        user.Username,
-			DisplayName:     displayNameFor(user),
+			DisplayName:     displayNameFor(*user),
 			Email:           user.Email,
 			Avatar:          user.Avatar,
 			AvatarURL:       avatarURLFor(user.DiscordID, user.Avatar),
@@ -277,7 +273,7 @@ func (h *DiscordAuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 			RPFirstName:     user.RPFirstName,
 			RPLastName:      user.RPLastName,
 			ProfileURL:      buildProfileURL(h.frontendURL, user.DiscordID),
-			IsOnline:        isUserOnline(user, now),
+			IsOnline:        isUserOnline(*user, now),
 			RPApplication:   summary,
 		},
 	})
@@ -291,10 +287,7 @@ func (h *DiscordAuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 
 	if user, err := h.requireAuthenticatedUser(r); err == nil {
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-		_, _ = h.userCollection.UpdateOne(ctx, bson.M{"discordId": user.DiscordID}, bson.M{"$set": bson.M{
-			"presenceActive": false,
-			"updatedAt":      time.Now().UTC(),
-		}})
+		_, _ = h.db.ExecContext(ctx, `UPDATE discord_users SET presence_active = FALSE, updated_at = $1 WHERE discord_id = $2`, time.Now().UTC(), user.DiscordID)
 		cancel()
 	}
 
@@ -317,10 +310,9 @@ func (h *DiscordAuthHandler) PublicProfile(w http.ResponseWriter, r *http.Reques
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	var user discordUserDoc
-	err := h.userCollection.FindOne(ctx, bson.M{"discordId": profileID}).Decode(&user)
+	user, err := h.loadDiscordUser(ctx, profileID)
 	if err != nil {
-		if errors.Is(err, mongo.ErrNoDocuments) {
+		if errors.Is(err, sql.ErrNoRows) {
 			fallback, fallbackErr := h.publicProfileFromRPApplication(ctx, profileID)
 			if fallbackErr != nil {
 				writeError(w, http.StatusInternalServerError, "failed to load profile")
@@ -337,20 +329,13 @@ func (h *DiscordAuthHandler) PublicProfile(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	profile := toPublicProfile(user, time.Now().UTC())
-
-	writeJSON(w, http.StatusOK, publicProfileResponse{Profile: profile})
+	writeJSON(w, http.StatusOK, publicProfileResponse{Profile: toPublicProfile(*user, time.Now().UTC())})
 }
 
 func (h *DiscordAuthHandler) publicProfileFromRPApplication(ctx context.Context, discordID string) (*publicProfile, error) {
-	var latest rpApplicationDoc
-	err := h.rpCollection.FindOne(
-		ctx,
-		bson.M{"discordId": discordID},
-		options.FindOne().SetSort(bson.D{{Key: "createdAt", Value: -1}}),
-	).Decode(&latest)
+	latest, err := h.loadLatestApplicationForDiscord(ctx, discordID)
 	if err != nil {
-		if errors.Is(err, mongo.ErrNoDocuments) {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
@@ -389,6 +374,52 @@ func (h *DiscordAuthHandler) publicProfileFromRPApplication(ctx context.Context,
 	}
 
 	return profile, nil
+}
+
+func (h *DiscordAuthHandler) loadDiscordUser(ctx context.Context, discordID string) (*discordUserDoc, error) {
+	var user discordUserDoc
+	var minecraftVerifiedAt sql.NullTime
+	var lastSeenAt sql.NullTime
+	var firstAuthenticatedAt sql.NullTime
+
+	err := h.db.QueryRowContext(
+		ctx,
+		`SELECT discord_id, username, global_name, email, avatar, linked_minecraft,
+		        rp_first_name, rp_last_name, acceptance_status, minecraft_verified_at,
+		        last_seen_at, presence_active, first_authenticated_at, created_at, updated_at
+		 FROM discord_users
+		 WHERE discord_id = $1`,
+		discordID,
+	).Scan(
+		&user.DiscordID,
+		&user.Username,
+		&user.GlobalName,
+		&user.Email,
+		&user.Avatar,
+		&user.LinkedMinecraft,
+		&user.RPFirstName,
+		&user.RPLastName,
+		&user.AcceptanceStatus,
+		&minecraftVerifiedAt,
+		&lastSeenAt,
+		&user.PresenceActive,
+		&firstAuthenticatedAt,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if minecraftVerifiedAt.Valid {
+		user.MinecraftVerifiedAt = &minecraftVerifiedAt.Time
+	}
+	if lastSeenAt.Valid {
+		user.LastSeenAt = &lastSeenAt.Time
+	}
+	if firstAuthenticatedAt.Valid {
+		user.FirstAuthenticatedAt = &firstAuthenticatedAt.Time
+	}
+	return &user, nil
 }
 
 func resolveCookieOptions(frontendURL string, r *http.Request) (string, bool) {
@@ -504,15 +535,11 @@ func toPublicProfile(user discordUserDoc, now time.Time) *publicProfile {
 		IsOnline:        isUserOnline(user, now),
 	}
 
-	var joinedAt time.Time
 	if user.FirstAuthenticatedAt != nil && !user.FirstAuthenticatedAt.IsZero() {
-		joinedAt = user.FirstAuthenticatedAt.UTC()
-	} else if !user.ID.IsZero() {
-		joinedAt = user.ID.Timestamp().UTC()
+		joinedAt := user.FirstAuthenticatedAt.UTC()
+		profile.JoinedAt = &joinedAt
 	} else if !user.CreatedAt.IsZero() {
-		joinedAt = user.CreatedAt.UTC()
-	}
-	if !joinedAt.IsZero() {
+		joinedAt := user.CreatedAt.UTC()
 		profile.JoinedAt = &joinedAt
 	}
 
@@ -533,10 +560,7 @@ func parseDiscordIDSet(raw string) map[string]struct{} {
 
 func (h *DiscordAuthHandler) isRPModerator(discordID string) bool {
 	discordID = strings.TrimSpace(discordID)
-	if discordID == "" {
-		return false
-	}
-	if len(h.rpModeratorIDs) == 0 {
+	if discordID == "" || len(h.rpModeratorIDs) == 0 {
 		return false
 	}
 	_, ok := h.rpModeratorIDs[discordID]
@@ -544,259 +568,5 @@ func (h *DiscordAuthHandler) isRPModerator(discordID string) bool {
 }
 
 func (h *DiscordAuthHandler) RunMigrations(ctx context.Context) error {
-	if err := h.ensureMigrationIndexes(ctx); err != nil {
-		return err
-	}
-
-	if err := h.migrateRPStatuses(ctx); err != nil {
-		return err
-	}
-
-	if err := h.syncRPDiscordMessages(ctx); err != nil {
-		return err
-	}
-
-	if err := h.migrateFirstAuthenticatedAt(ctx); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (h *DiscordAuthHandler) migrateFirstAuthenticatedAt(ctx context.Context) error {
-	cursor, err := h.userCollection.Find(ctx, bson.M{}, options.Find().SetProjection(bson.M{
-		"discordId":            1,
-		"createdAt":            1,
-		"firstAuthenticatedAt": 1,
-	}))
-	if err != nil {
-		return err
-	}
-	defer cursor.Close(ctx)
-
-	for cursor.Next(ctx) {
-		var user discordUserDoc
-		if err := cursor.Decode(&user); err != nil {
-			return err
-		}
-
-		if strings.TrimSpace(user.DiscordID) == "" {
-			continue
-		}
-
-		if user.FirstAuthenticatedAt != nil && !user.FirstAuthenticatedAt.IsZero() {
-			continue
-		}
-
-		if !user.ID.IsZero() {
-			target := user.ID.Timestamp().UTC()
-			_, err = h.userCollection.UpdateOne(
-				ctx,
-				bson.M{"discordId": user.DiscordID},
-				bson.M{"$set": bson.M{"firstAuthenticatedAt": target}},
-			)
-			if err != nil {
-				return err
-			}
-			continue
-		}
-
-		target := user.CreatedAt.UTC()
-		if target.IsZero() {
-			continue
-		}
-
-		_, err = h.userCollection.UpdateOne(
-			ctx,
-			bson.M{"discordId": user.DiscordID},
-			bson.M{"$set": bson.M{"firstAuthenticatedAt": target}},
-		)
-		if err != nil {
-			return err
-		}
-	}
-
-	return cursor.Err()
-}
-
-func (h *DiscordAuthHandler) ensureMigrationIndexes(ctx context.Context) error {
-	if h.userCollection != nil {
-		_, err := h.userCollection.Indexes().CreateOne(ctx, mongo.IndexModel{
-			Keys:    bson.D{{Key: "discordId", Value: 1}},
-			Options: options.Index().SetUnique(true).SetName("discord_users_discordId_unique"),
-		})
-		if err := ignoreIndexConflict(err); err != nil {
-			return err
-		}
-	}
-
-	if h.rpCollection != nil {
-		_, err := h.rpCollection.Indexes().CreateOne(ctx, mongo.IndexModel{
-			Keys:    bson.D{{Key: "discordId", Value: 1}, {Key: "createdAt", Value: -1}},
-			Options: options.Index().SetName("rp_applications_discordId_createdAt"),
-		})
-		if err := ignoreIndexConflict(err); err != nil {
-			return err
-		}
-
-		_, err = h.rpCollection.Indexes().CreateOne(ctx, mongo.IndexModel{
-			Keys:    bson.D{{Key: "status", Value: 1}, {Key: "updatedAt", Value: -1}},
-			Options: options.Index().SetName("rp_applications_status_updatedAt"),
-		})
-		if err := ignoreIndexConflict(err); err != nil {
-			return err
-		}
-	}
-
-	if h.codeCollection != nil {
-		_, err := h.codeCollection.Indexes().CreateOne(ctx, mongo.IndexModel{
-			Keys:    bson.D{{Key: "discordId", Value: 1}, {Key: "createdAt", Value: -1}},
-			Options: options.Index().SetName("verification_codes_discordId_createdAt"),
-		})
-		if err := ignoreIndexConflict(err); err != nil {
-			return err
-		}
-
-		_, err = h.codeCollection.Indexes().CreateOne(ctx, mongo.IndexModel{
-			Keys:    bson.D{{Key: "code", Value: 1}},
-			Options: options.Index().SetName("verification_codes_code"),
-		})
-		if err := ignoreIndexConflict(err); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func ignoreIndexConflict(err error) error {
-	if err == nil {
-		return nil
-	}
-	lower := strings.ToLower(err.Error())
-	if strings.Contains(lower, "already exists") || strings.Contains(lower, "indexoptionsconflict") || strings.Contains(lower, "index key specs conflict") {
-		return nil
-	}
-	return err
-}
-
-func (h *DiscordAuthHandler) migrateRPStatuses(ctx context.Context) error {
-	type rpMigrationDoc struct {
-		ID              primitive.ObjectID `bson:"_id"`
-		Status          string             `bson:"status"`
-		ModerationToken string             `bson:"moderationToken"`
-		ModeratedAt     *time.Time         `bson:"moderatedAt,omitempty"`
-		CreatedAt       time.Time          `bson:"createdAt,omitempty"`
-		UpdatedAt       time.Time          `bson:"updatedAt,omitempty"`
-	}
-
-	cursor, err := h.rpCollection.Find(ctx, bson.M{}, options.Find().SetProjection(bson.M{
-		"status":          1,
-		"moderationToken": 1,
-		"moderatedAt":     1,
-		"createdAt":       1,
-		"updatedAt":       1,
-	}))
-	if err != nil {
-		return err
-	}
-	defer cursor.Close(ctx)
-
-	for cursor.Next(ctx) {
-		var doc rpMigrationDoc
-		if err := cursor.Decode(&doc); err != nil {
-			return err
-		}
-
-		nextStatus := normalizedStatus(doc.Status)
-		if nextStatus == "" {
-			nextStatus = "pending"
-		}
-		setPayload := bson.M{}
-
-		if nextStatus != doc.Status {
-			setPayload["status"] = nextStatus
-		}
-
-		if nextStatus == "pending" {
-			if strings.TrimSpace(doc.ModerationToken) == "" {
-				setPayload["moderationToken"] = randomHex(20)
-			}
-			if doc.ModeratedAt != nil {
-				setPayload["moderatedAt"] = nil
-			}
-		} else if (nextStatus == "accepted" || nextStatus == "canceled") && doc.ModeratedAt == nil {
-			moderatedAt := doc.UpdatedAt.UTC()
-			if moderatedAt.IsZero() {
-				moderatedAt = doc.CreatedAt.UTC()
-			}
-			if moderatedAt.IsZero() {
-				moderatedAt = time.Now().UTC()
-			}
-			setPayload["moderatedAt"] = moderatedAt
-		}
-
-		if len(setPayload) == 0 {
-			continue
-		}
-
-		if _, hasUpdatedAt := setPayload["updatedAt"]; !hasUpdatedAt {
-			setPayload["updatedAt"] = time.Now().UTC()
-		}
-
-		_, err = h.rpCollection.UpdateByID(ctx, doc.ID, bson.M{"$set": setPayload})
-		if err != nil {
-			return err
-		}
-	}
-
-	return cursor.Err()
-}
-
-func (h *DiscordAuthHandler) syncRPDiscordMessages(ctx context.Context) error {
-	if h.rpCollection == nil || strings.TrimSpace(h.rpWebhookURL) == "" {
-		return nil
-	}
-
-	filter := bson.M{
-		"discordMessageId": bson.M{"$exists": true, "$ne": ""},
-		"status":           bson.M{"$in": []string{"pending", "accepted", "approved"}},
-	}
-
-	cursor, err := h.rpCollection.Find(ctx, filter, options.Find().SetProjection(bson.M{
-		"discordId":        1,
-		"discordMessageId": 1,
-		"moderationToken":  1,
-		"status":           1,
-		"nickname":         1,
-		"source":           1,
-		"rpName":           1,
-		"birthDate":        1,
-		"race":             1,
-		"gender":           1,
-		"skills":           1,
-		"plan":             1,
-		"biography":        1,
-		"skinUrl":          1,
-		"updatedAt":        1,
-	}))
-	if err != nil {
-		return err
-	}
-	defer cursor.Close(ctx)
-
-	for cursor.Next(ctx) {
-		var app rpApplicationDoc
-		if err := cursor.Decode(&app); err != nil {
-			return err
-		}
-		if strings.TrimSpace(app.DiscordMessageID) == "" {
-			continue
-		}
-		if err := h.updateRPApplicationDiscordMessage(app); err != nil {
-			return err
-		}
-	}
-
-	return cursor.Err()
+	return h.syncRPDiscordMessages(ctx)
 }

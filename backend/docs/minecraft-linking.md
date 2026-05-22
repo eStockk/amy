@@ -1,61 +1,22 @@
-﻿# Minecraft <-> Website integration
+# Minecraft Account Linking
 
-Этот файл описывает контракт для плагина сервера, который будет выдавать код верификации после кика и синхронизировать RP-имя с сайтом.
+The Minecraft server talks to the website API with `X-Server-Token` set to `MINECRAFT_SERVER_TOKEN`.
 
-## Авторизация запросов от сервера
-
-Все серверные запросы должны передавать заголовок:
-
-```http
-X-Server-Token: <MINECRAFT_SERVER_TOKEN>
-```
-
-Токен задается в `.env` бэкенда.
-
----
-
-## 1) Получить код верификации после кика
+## Generate a verification code
 
 `POST /api/minecraft/verification-code`
 
-Request body:
-
 ```json
 {
-  "nickname": "PlayerNick"
+  "nickname": "PlayerName"
 }
 ```
 
-Ответы:
-- `200 OK` с кодом и временем истечения:
+The backend looks for an accepted RP application with this nickname, creates or reuses a short-lived verification code, and stores it in PostgreSQL.
 
-```json
-{
-  "code": "A4K8M2Q9",
-  "expiresAt": "2026-02-13T18:22:00Z"
-}
-```
+## Verify on the website
 
-- `200 OK` если уже верифицирован:
-
-```json
-{
-  "alreadyVerified": true
-}
-```
-
-- `404` если для ника нет одобренной RP-заявки.
-
-### Логика на сервере
-1. Игрок входит.
-2. Если не в вайтлисте/не верифицирован на сайте - запросить код этим методом.
-3. Кикнуть игрока с текстом: "Введите код <CODE> на сайте в профиле".
-
----
-
-## 2) Пользователь вводит код на сайте
-
-Сайт вызывает:
+The player signs in through Discord and submits the code to:
 
 `POST /api/auth/verify-minecraft`
 
@@ -65,47 +26,18 @@ Request body:
 }
 ```
 
-Если код валиден и принадлежит авторизованному пользователю, аккаунт связывается с ником (`linkedMinecraft`).
+After a successful match, the backend writes `linked_minecraft` and `minecraft_verified_at` into `discord_users`.
 
----
-
-## 3) Синхронизация MineRP имени и фамилии
-
-После того как игрок в MineRP указал имя/фамилию, плагин отправляет:
+## Sync RP name from the server
 
 `POST /api/minecraft/rp-name`
 
 ```json
 {
-  "nickname": "PlayerNick",
-  "firstName": "Итан",
-  "lastName": "Брукс"
+  "nickname": "PlayerName",
+  "firstName": "Amy",
+  "lastName": "Stone"
 }
 ```
 
-Сайт обновит профиль пользователя (поля `rpFirstName`, `rpLastName`) по связанному нику.
-
----
-
-## 4) RP-заявки и модерация
-
-Пользователь отправляет RP-заявку через сайт:
-- `POST /api/rp/applications`
-
-Сайт отправляет заявку в Discord webhook (`DISCORD_RP_WEBHOOK`) с двумя кнопками-ссылками:
-- Approve
-- Reject
-
-Кнопки открывают модерацию:
-- `GET /api/rp/applications/{id}/moderate?action=approve|reject&token=...`
-
-После `approve` ник становится доступным для шага выдачи кода верификации.
-
-
-## ???????? RP-?????? ?????????????
-
-?????????????? ???????????? ????? ??????? ???? ?????:
-
-`DELETE /api/rp/applications/{id}`
-
-?????? ??????? ?????? ?? MongoDB ? ??????? ??????????????? ????????? ?????? ?? Discord webhook-?????? (???? ????? ??? ?????? ????? ????????? ???????? `discordMessageId`).
+The backend updates the linked Discord user in PostgreSQL.

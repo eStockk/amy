@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -14,49 +15,52 @@ import (
 	"regexp"
 	"strings"
 	"time"
-
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type rpApplicationDoc struct {
-	ID               primitive.ObjectID `bson:"_id,omitempty"`
-	DiscordID        string             `bson:"discordId"`
-	Nickname         string             `bson:"nickname"`
-	Source           string             `bson:"source,omitempty"`
-	RPName           string             `bson:"rpName,omitempty"`
-	BirthDate        string             `bson:"birthDate"`
-	Race             string             `bson:"race"`
-	Gender           string             `bson:"gender"`
-	Skills           string             `bson:"skills"`
-	Plan             string             `bson:"plan"`
-	Biography        string             `bson:"biography"`
-	SkinURL          string             `bson:"skinUrl"`
-	Status           string             `bson:"status"`
-	ModerationToken  string             `bson:"moderationToken"`
-	DiscordMessageID string             `bson:"discordMessageId,omitempty"`
-	ModeratedAt      *time.Time         `bson:"moderatedAt,omitempty"`
-	CreatedAt        time.Time          `bson:"createdAt"`
-	UpdatedAt        time.Time          `bson:"updatedAt"`
+	ID               string
+	DiscordID        string
+	Nickname         string
+	Source           string
+	RPName           string
+	BirthDate        string
+	Race             string
+	Gender           string
+	HeightCm         int
+	Skills           string
+	Plan             string
+	Biography        string
+	PrisonReason     string
+	SkinURL          string
+	Status           string
+	ModerationToken  string
+	DiscordMessageID string
+	ModeratedAt      *time.Time
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 type rpApplicationRequest struct {
-	Nickname  string `json:"nickname"`
-	Source    string `json:"source"`
-	RPName    string `json:"rpName"`
-	BirthDate string `json:"birthDate"`
-	Race      string `json:"race"`
-	Gender    string `json:"gender"`
-	Skills    string `json:"skills"`
-	Plan      string `json:"plan"`
-	Biography string `json:"biography"`
-	SkinURL   string `json:"skinUrl"`
+	Nickname     string `json:"nickname"`
+	Source       string `json:"source"`
+	RPName       string `json:"rpName"`
+	BirthDate    string `json:"birthDate"`
+	Race         string `json:"race"`
+	Gender       string `json:"gender"`
+	HeightCm     int    `json:"heightCm"`
+	Skills       string `json:"skills"`
+	Plan         string `json:"plan"`
+	Biography    string `json:"biography"`
+	PrisonReason string `json:"prisonReason"`
+	SkinURL      string `json:"skinUrl"`
 }
 
 type discordWebhookMessage struct {
 	ID string `json:"id"`
+}
+
+type sqlScanner interface {
+	Scan(dest ...any) error
 }
 
 var imageExtRe = regexp.MustCompile(`(?i)\.(png|jpe?g|webp)$`)
@@ -96,16 +100,17 @@ func (h *DiscordAuthHandler) SubmitRPApplication(w http.ResponseWriter, r *http.
 		return
 	}
 
-	if hasPending, err := h.hasPendingApplication(ctx, user.DiscordID); err != nil {
+	if hasLocked, err := h.hasLockedApplication(ctx, user.DiscordID); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to check current applications")
 		return
-	} else if hasPending {
+	} else if hasLocked {
 		writeError(w, http.StatusConflict, "pending rp application already exists")
 		return
 	}
 
 	now := time.Now().UTC()
 	doc := rpApplicationDoc{
+		ID:              randomHex(12),
 		DiscordID:       user.DiscordID,
 		Nickname:        payload.Nickname,
 		Source:          payload.Source,
@@ -113,9 +118,11 @@ func (h *DiscordAuthHandler) SubmitRPApplication(w http.ResponseWriter, r *http.
 		BirthDate:       payload.BirthDate,
 		Race:            payload.Race,
 		Gender:          payload.Gender,
+		HeightCm:        payload.HeightCm,
 		Skills:          payload.Skills,
 		Plan:            payload.Plan,
 		Biography:       payload.Biography,
+		PrisonReason:    payload.PrisonReason,
 		SkinURL:         payload.SkinURL,
 		Status:          "pending",
 		ModerationToken: randomHex(20),
@@ -123,35 +130,55 @@ func (h *DiscordAuthHandler) SubmitRPApplication(w http.ResponseWriter, r *http.
 		UpdatedAt:       now,
 	}
 
-	insertResult, err := h.rpCollection.InsertOne(ctx, doc)
+	_, err = h.db.ExecContext(
+		ctx,
+		`INSERT INTO rp_applications
+		 (id, discord_id, nickname, source, rp_name, birth_date, race, gender, height_cm,
+		  skills, plan, biography, prison_reason, skin_url, status, moderation_token, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+		doc.ID,
+		doc.DiscordID,
+		doc.Nickname,
+		doc.Source,
+		doc.RPName,
+		doc.BirthDate,
+		doc.Race,
+		doc.Gender,
+		doc.HeightCm,
+		doc.Skills,
+		doc.Plan,
+		doc.Biography,
+		doc.PrisonReason,
+		doc.SkinURL,
+		doc.Status,
+		doc.ModerationToken,
+		doc.CreatedAt,
+		doc.UpdatedAt,
+	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create rp application")
 		return
 	}
 
-	id, _ := insertResult.InsertedID.(primitive.ObjectID)
-	doc.ID = id
+	_, _ = h.db.ExecContext(ctx, `UPDATE discord_users SET acceptance_status = 'pending', updated_at = $1 WHERE discord_id = $2`, now, user.DiscordID)
 
 	if h.rpWebhookURL != "" {
 		messageID, webhookErr := h.sendRPApplicationWebhook(doc, user)
 		if webhookErr != nil {
-			_, _ = h.rpCollection.DeleteOne(ctx, bson.M{"_id": doc.ID})
+			_, _ = h.db.ExecContext(ctx, `DELETE FROM rp_applications WHERE id = $1`, doc.ID)
 			writeError(w, http.StatusBadGateway, "failed to send rp ticket to discord")
 			return
 		}
 
 		if messageID != "" {
 			doc.DiscordMessageID = messageID
-			_, _ = h.rpCollection.UpdateByID(ctx, doc.ID, bson.M{"$set": bson.M{
-				"discordMessageId": messageID,
-				"updatedAt":        time.Now().UTC(),
-			}})
+			_, _ = h.db.ExecContext(ctx, `UPDATE rp_applications SET discord_message_id = $1, updated_at = $2 WHERE id = $3`, messageID, time.Now().UTC(), doc.ID)
 		}
 	}
 
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"status":        "ok",
-		"applicationId": doc.ID.Hex(),
+		"applicationId": doc.ID,
 	})
 }
 
@@ -197,10 +224,9 @@ func (h *DiscordAuthHandler) ModerateRPApplication(w http.ResponseWriter, r *htt
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
 
-	var current rpApplicationDoc
-	err = h.rpCollection.FindOne(ctx, bson.M{"_id": applicationID}).Decode(&current)
+	current, err := h.loadApplicationByID(ctx, applicationID)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
+		if err == sql.ErrNoRows {
 			writeError(w, http.StatusNotFound, "application not found")
 			return
 		}
@@ -216,42 +242,49 @@ func (h *DiscordAuthHandler) ModerateRPApplication(w http.ResponseWriter, r *htt
 	currentStatus := normalizedStatus(current.Status)
 	nextStatus, allowed := nextStatusByAction(currentStatus, action)
 	if !allowed {
-		h.writeModerationHTML(w, current, "already-processed")
+		h.writeModerationHTML(w, *current, "already-processed")
 		return
 	}
 
 	now := time.Now().UTC()
 	newToken := current.ModerationToken
-	setPayload := bson.M{
-		"status":    nextStatus,
-		"updatedAt": now,
-	}
+	var moderatedAt any = now
 	if nextStatus == "pending" {
 		newToken = randomHex(20)
-		setPayload["moderationToken"] = newToken
-		setPayload["moderatedAt"] = nil
+		moderatedAt = nil
 		current.ModeratedAt = nil
 	} else {
-		setPayload["moderatedAt"] = now
 		current.ModeratedAt = &now
 	}
 
-	_, err = h.rpCollection.UpdateByID(ctx, applicationID, bson.M{"$set": setPayload})
+	_, err = h.db.ExecContext(
+		ctx,
+		`UPDATE rp_applications
+		 SET status = $1, moderation_token = $2, moderated_at = $3, updated_at = $4
+		 WHERE id = $5`,
+		nextStatus,
+		newToken,
+		moderatedAt,
+		now,
+		applicationID,
+	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to moderate application")
 		return
 	}
 
+	_, _ = h.db.ExecContext(ctx, `UPDATE discord_users SET acceptance_status = $1, updated_at = $2 WHERE discord_id = $3`, nextStatus, now, current.DiscordID)
+
 	current.Status = nextStatus
 	current.UpdatedAt = now
 	current.ModerationToken = newToken
 
-	if updateErr := h.updateRPApplicationDiscordMessage(current); updateErr != nil {
+	if updateErr := h.updateRPApplicationDiscordMessage(*current); updateErr != nil {
 		writeError(w, http.StatusBadGateway, "failed to update discord ticket")
 		return
 	}
 
-	h.writeModerationHTML(w, current, action)
+	h.writeModerationHTML(w, *current, action)
 }
 
 func (h *DiscordAuthHandler) DeleteRPApplication(w http.ResponseWriter, r *http.Request) {
@@ -270,10 +303,9 @@ func (h *DiscordAuthHandler) DeleteRPApplication(w http.ResponseWriter, r *http.
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
 
-	var application rpApplicationDoc
-	err = h.rpCollection.FindOne(ctx, bson.M{"_id": applicationID}).Decode(&application)
+	application, err := h.loadApplicationByID(ctx, applicationID)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
+		if err == sql.ErrNoRows {
 			writeError(w, http.StatusNotFound, "application not found")
 			return
 		}
@@ -296,39 +328,88 @@ func (h *DiscordAuthHandler) DeleteRPApplication(w http.ResponseWriter, r *http.
 		return
 	}
 
-	_, err = h.rpCollection.DeleteOne(ctx, bson.M{"_id": applicationID, "discordId": user.DiscordID})
+	_, err = h.db.ExecContext(ctx, `DELETE FROM rp_applications WHERE id = $1 AND discord_id = $2`, applicationID, user.DiscordID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to delete application")
 		return
 	}
 
-	_, _ = h.codeCollection.DeleteMany(ctx, bson.M{"applicationId": application.ID.Hex()})
+	_, _ = h.db.ExecContext(ctx, `DELETE FROM minecraft_verification_codes WHERE application_id = $1`, application.ID)
+	_, _ = h.db.ExecContext(ctx, `UPDATE discord_users SET acceptance_status = 'pending', updated_at = $1 WHERE discord_id = $2 AND acceptance_status <> 'accepted'`, time.Now().UTC(), user.DiscordID)
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (h *DiscordAuthHandler) latestApplicationSummary(ctx context.Context, discordID string) (*rpApplicationSummaryOut, error) {
-	findOpts := options.FindOne().SetSort(bson.D{{Key: "createdAt", Value: -1}})
-	var doc rpApplicationDoc
-	if err := h.rpCollection.FindOne(ctx, bson.M{"discordId": discordID}, findOpts).Decode(&doc); err != nil {
-		if err == mongo.ErrNoDocuments {
+	doc, err := h.loadLatestApplicationForDiscord(ctx, discordID)
+	if err != nil {
+		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, err
 	}
 
 	return &rpApplicationSummaryOut{
-		ID:          doc.ID.Hex(),
-		Status:      doc.Status,
-		Nickname:    doc.Nickname,
-		RPName:      doc.RPName,
-		Race:        doc.Race,
-		Gender:      doc.Gender,
-		BirthDate:   doc.BirthDate,
-		CreatedAt:   &doc.CreatedAt,
-		UpdatedAt:   &doc.UpdatedAt,
-		ModeratedAt: doc.ModeratedAt,
+		ID:           doc.ID,
+		Status:       doc.Status,
+		Nickname:     doc.Nickname,
+		RPName:       doc.RPName,
+		Race:         doc.Race,
+		Gender:       doc.Gender,
+		HeightCm:     doc.HeightCm,
+		BirthDate:    doc.BirthDate,
+		PrisonReason: doc.PrisonReason,
+		CreatedAt:    &doc.CreatedAt,
+		UpdatedAt:    &doc.UpdatedAt,
+		ModeratedAt:  doc.ModeratedAt,
 	}, nil
+}
+
+func (h *DiscordAuthHandler) loadApplicationByID(ctx context.Context, id string) (*rpApplicationDoc, error) {
+	return scanRPApplication(h.db.QueryRowContext(ctx, rpApplicationSelectSQL+` WHERE id = $1`, id))
+}
+
+func (h *DiscordAuthHandler) loadLatestApplicationForDiscord(ctx context.Context, discordID string) (*rpApplicationDoc, error) {
+	return scanRPApplication(h.db.QueryRowContext(ctx, rpApplicationSelectSQL+` WHERE discord_id = $1 ORDER BY created_at DESC LIMIT 1`, discordID))
+}
+
+const rpApplicationSelectSQL = `SELECT id, discord_id, nickname, source, rp_name, birth_date, race, gender, height_cm,
+       skills, plan, biography, prison_reason, skin_url, status, moderation_token,
+       discord_message_id, moderated_at, created_at, updated_at
+FROM rp_applications`
+
+func scanRPApplication(scanner sqlScanner) (*rpApplicationDoc, error) {
+	var app rpApplicationDoc
+	var moderatedAt sql.NullTime
+	err := scanner.Scan(
+		&app.ID,
+		&app.DiscordID,
+		&app.Nickname,
+		&app.Source,
+		&app.RPName,
+		&app.BirthDate,
+		&app.Race,
+		&app.Gender,
+		&app.HeightCm,
+		&app.Skills,
+		&app.Plan,
+		&app.Biography,
+		&app.PrisonReason,
+		&app.SkinURL,
+		&app.Status,
+		&app.ModerationToken,
+		&app.DiscordMessageID,
+		&moderatedAt,
+		&app.CreatedAt,
+		&app.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if moderatedAt.Valid {
+		app.ModeratedAt = &moderatedAt.Time
+	}
+	return &app, nil
 }
 
 func (h *DiscordAuthHandler) sendRPApplicationWebhook(doc rpApplicationDoc, user *discordUserDoc) (string, error) {
@@ -429,16 +510,15 @@ func (h *DiscordAuthHandler) moderationURL(applicationID, action, token string) 
 	return fmt.Sprintf("%s/api/rp/applications/%s/moderate?action=%s&token=%s", base, applicationID, action, url.QueryEscape(token))
 }
 
-func (h *DiscordAuthHandler) hasPendingApplication(ctx context.Context, discordID string) (bool, error) {
-	count, err := h.rpCollection.CountDocuments(ctx, bson.M{"discordId": discordID, "status": "pending"})
+func (h *DiscordAuthHandler) hasLockedApplication(ctx context.Context, discordID string) (bool, error) {
+	var count int
+	err := h.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM rp_applications WHERE discord_id = $1 AND status IN ('pending', 'call')`, discordID).Scan(&count)
 	return count > 0, err
 }
 
 func (h *DiscordAuthHandler) hasAcceptedApplication(ctx context.Context, discordID string) (bool, error) {
-	count, err := h.rpCollection.CountDocuments(ctx, bson.M{
-		"discordId": discordID,
-		"status":    bson.M{"$in": []string{"accepted", "approved"}},
-	})
+	var count int
+	err := h.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM rp_applications WHERE discord_id = $1 AND status IN ('accepted', 'approved')`, discordID).Scan(&count)
 	return count > 0, err
 }
 
@@ -460,7 +540,7 @@ func normalizeModerationAction(raw string) string {
 		return "accept"
 	case "reject":
 		return "cancel"
-	case "accept", "cancel", "reconsider":
+	case "accept", "cancel", "call", "reconsider":
 		return action
 	default:
 		return ""
@@ -470,17 +550,22 @@ func normalizeModerationAction(raw string) string {
 func nextStatusByAction(currentStatus, action string) (string, bool) {
 	switch action {
 	case "accept":
-		if currentStatus != "pending" {
+		if currentStatus != "pending" && currentStatus != "call" {
 			return "", false
 		}
 		return "accepted", true
 	case "cancel":
-		if currentStatus != "pending" {
+		if currentStatus != "pending" && currentStatus != "call" {
 			return "", false
 		}
 		return "canceled", true
+	case "call":
+		if currentStatus != "pending" {
+			return "", false
+		}
+		return "call", true
 	case "reconsider":
-		if currentStatus != "accepted" {
+		if currentStatus == "pending" {
 			return "", false
 		}
 		return "pending", true
@@ -492,9 +577,10 @@ func nextStatusByAction(currentStatus, action string) (string, bool) {
 func (h *DiscordAuthHandler) buildRPApplicationDiscordPayload(doc rpApplicationDoc, user *discordUserDoc) map[string]any {
 	status := normalizedStatus(doc.Status)
 	statusText := map[string]string{
-		"pending":  "\u041d\u0430 \u0440\u0430\u0441\u0441\u043c\u043e\u0442\u0440\u0435\u043d\u0438\u0438",
-		"accepted": "\u041f\u0440\u0438\u043d\u044f\u0442\u0430",
-		"canceled": "\u041e\u0442\u043c\u0435\u043d\u0435\u043d\u0430",
+		"pending":  "На рассмотрении",
+		"call":     "Позвать на созвон",
+		"accepted": "Принята",
+		"canceled": "Отменена",
 	}[status]
 	if statusText == "" {
 		statusText = doc.Status
@@ -506,34 +592,33 @@ func (h *DiscordAuthHandler) buildRPApplicationDiscordPayload(doc rpApplicationD
 	}
 
 	fields := []map[string]string{
-		{"name": "Discord \u0430\u043a\u043a\u0430\u0443\u043d\u0442", "value": safeValue(discordAccount)},
-		{"name": "\u041d\u0438\u043a \u0432 \u0438\u0433\u0440\u0435", "value": safeValue(doc.Nickname)},
-		{"name": "\u041e\u0442\u043a\u0443\u0434\u0430 \u0443\u0437\u043d\u0430\u043b \u0438 \u043e \u0441\u0435\u0440\u0432\u0435\u0440\u0435", "value": safeValue(doc.Source)},
-		{"name": "\u0418\u043c\u044f \u0438 \u0444\u0430\u043c\u0438\u043b\u0438\u044f", "value": safeValue(doc.RPName)},
-		{"name": "\u0414\u0430\u0442\u0430 \u0440\u043e\u0436\u0434\u0435\u043d\u0438\u044f", "value": safeValue(doc.BirthDate)},
-		{"name": "\u0420\u0430\u0441\u0430", "value": safeValue(doc.Race)},
-		{"name": "\u041f\u043e\u043b", "value": safeValue(doc.Gender)},
-		{"name": "\u041a\u043b\u044e\u0447\u0435\u0432\u044b\u0435 \u043d\u0430\u0432\u044b\u043a\u0438", "value": trimForDiscord(doc.Skills)},
-		{"name": "\u041f\u043b\u0430\u043d \u0440\u0430\u0437\u0432\u0438\u0442\u0438\u044f", "value": trimForDiscord(doc.Plan)},
-		{"name": "\u0411\u0438\u043e\u0433\u0440\u0430\u0444\u0438\u044f", "value": trimForDiscord(doc.Biography)},
-		{"name": "\u0421\u0441\u044b\u043b\u043a\u0430 \u043d\u0430 \u0441\u043a\u0438\u043d", "value": safeValue(doc.SkinURL)},
+		{"name": "Discord аккаунт", "value": safeValue(discordAccount)},
+		{"name": "Ник в игре", "value": safeValue(doc.Nickname)},
+		{"name": "Откуда узнал о сервере", "value": safeValue(doc.Source)},
+		{"name": "Имя и фамилия", "value": safeValue(doc.RPName)},
+		{"name": "Дата рождения", "value": safeValue(doc.BirthDate)},
+		{"name": "Раса", "value": safeValue(doc.Race)},
+		{"name": "Пол", "value": safeValue(doc.Gender)},
+		{"name": "Рост", "value": fmt.Sprintf("%d см", doc.HeightCm)},
+		{"name": "Ключевые навыки", "value": trimForDiscord(doc.Skills)},
+		{"name": "План развития", "value": trimForDiscord(doc.Plan)},
+		{"name": "Биография", "value": trimForDiscord(doc.Biography)},
+		{"name": "Причина ссылки на тюремный остров", "value": trimForDiscord(doc.PrisonReason)},
+		{"name": "Ссылка на скин", "value": safeValue(doc.SkinURL)},
 	}
 
 	if links := h.rpModerationLinks(doc); links != "" {
-		fields = append(fields, map[string]string{
-			"name":  "\u041c\u043e\u0434\u0435\u0440\u0430\u0446\u0438\u044f",
-			"value": links,
-		})
+		fields = append(fields, map[string]string{"name": "Модерация", "value": links})
 	}
 
 	embed := map[string]any{
-		"title":       "\u0052\u0050-\u0437\u0430\u044f\u0432\u043a\u0430: " + doc.Nickname,
-		"description": "\u0421\u0442\u0430\u0442\u0443\u0441 \u0437\u0430\u044f\u0432\u043a\u0438: " + statusText,
+		"title":       "RP-заявка: " + doc.Nickname,
+		"description": "Статус заявки: " + statusText,
 		"color":       14901048,
 		"fields":      fields,
 	}
 
-	content := "\u0052\u0050-\u0442\u0438\u043a\u0435\u0442 \u0438\u0433\u0440\u043e\u043a\u0430 " + doc.Nickname
+	content := "RP-тикет игрока " + doc.Nickname
 	if links := h.rpModerationLinks(doc); links != "" {
 		content += "\n" + links
 	}
@@ -543,8 +628,7 @@ func (h *DiscordAuthHandler) buildRPApplicationDiscordPayload(doc rpApplicationD
 		"embeds":  []any{embed},
 	}
 
-	components := h.rpDiscordComponents(doc)
-	if len(components) > 0 {
+	if components := h.rpDiscordComponents(doc); len(components) > 0 {
 		payload["components"] = components
 	}
 
@@ -555,12 +639,19 @@ func (h *DiscordAuthHandler) rpModerationLinks(doc rpApplicationDoc) string {
 	status := normalizedStatus(doc.Status)
 	switch status {
 	case "pending":
-		acceptURL := h.moderationURL(doc.ID.Hex(), "accept", doc.ModerationToken)
-		cancelURL := h.moderationURL(doc.ID.Hex(), "cancel", doc.ModerationToken)
-		return "\u041f\u0440\u0438\u043d\u044f\u0442\u044c: " + acceptURL + "\n\u041e\u0442\u043c\u0435\u043d\u0438\u0442\u044c: " + cancelURL
-	case "accepted":
-		reconsiderURL := h.moderationURL(doc.ID.Hex(), "reconsider", doc.ModerationToken)
-		return "\u041f\u0435\u0440\u0435\u0440\u0430\u0441\u0441\u043c\u043e\u0442\u0440: " + reconsiderURL
+		return strings.Join([]string{
+			"Принять: " + h.moderationURL(doc.ID, "accept", doc.ModerationToken),
+			"Позвать на созвон: " + h.moderationURL(doc.ID, "call", doc.ModerationToken),
+			"Отменить: " + h.moderationURL(doc.ID, "cancel", doc.ModerationToken),
+		}, "\n")
+	case "call":
+		return strings.Join([]string{
+			"Принять после созвона: " + h.moderationURL(doc.ID, "accept", doc.ModerationToken),
+			"Отменить: " + h.moderationURL(doc.ID, "cancel", doc.ModerationToken),
+			"Вернуть на рассмотрение: " + h.moderationURL(doc.ID, "reconsider", doc.ModerationToken),
+		}, "\n")
+	case "accepted", "canceled":
+		return "Перерассмотр: " + h.moderationURL(doc.ID, "reconsider", doc.ModerationToken)
 	default:
 		return ""
 	}
@@ -568,30 +659,25 @@ func (h *DiscordAuthHandler) rpModerationLinks(doc rpApplicationDoc) string {
 
 func (h *DiscordAuthHandler) rpDiscordComponents(doc rpApplicationDoc) []any {
 	status := normalizedStatus(doc.Status)
+	button := func(label, action string) map[string]any {
+		return map[string]any{"type": 2, "style": 5, "label": label, "url": h.moderationURL(doc.ID, action, doc.ModerationToken)}
+	}
 
 	switch status {
 	case "pending":
-		acceptURL := h.moderationURL(doc.ID.Hex(), "accept", doc.ModerationToken)
-		cancelURL := h.moderationURL(doc.ID.Hex(), "cancel", doc.ModerationToken)
-		return []any{
-			map[string]any{
-				"type": 1,
-				"components": []any{
-					map[string]any{"type": 2, "style": 5, "label": "\u041f\u0440\u0438\u043d\u044f\u0442\u044c", "url": acceptURL},
-					map[string]any{"type": 2, "style": 5, "label": "\u041e\u0442\u043c\u0435\u043d\u0438\u0442\u044c", "url": cancelURL},
-				},
-			},
-		}
-	case "accepted":
-		reconsiderURL := h.moderationURL(doc.ID.Hex(), "reconsider", doc.ModerationToken)
-		return []any{
-			map[string]any{
-				"type": 1,
-				"components": []any{
-					map[string]any{"type": 2, "style": 5, "label": "\u041f\u0435\u0440\u0435\u0440\u0430\u0441\u0441\u043c\u043e\u0442\u0440", "url": reconsiderURL},
-				},
-			},
-		}
+		return []any{map[string]any{"type": 1, "components": []any{
+			button("Принять", "accept"),
+			button("Позвать на созвон", "call"),
+			button("Отменить", "cancel"),
+		}}}
+	case "call":
+		return []any{map[string]any{"type": 1, "components": []any{
+			button("Принять", "accept"),
+			button("Отменить", "cancel"),
+			button("На рассмотрение", "reconsider"),
+		}}}
+	case "accepted", "canceled":
+		return []any{map[string]any{"type": 1, "components": []any{button("Перерассмотр", "reconsider")}}}
 	default:
 		return nil
 	}
@@ -605,13 +691,8 @@ func (h *DiscordAuthHandler) updateRPApplicationDiscordMessage(app rpApplication
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
 	defer cancel()
 
-	var owner discordUserDoc
-	_ = h.userCollection.FindOne(ctx, bson.M{"discordId": app.DiscordID}).Decode(&owner)
-	var ownerPtr *discordUserDoc
-	if strings.TrimSpace(owner.DiscordID) != "" {
-		ownerPtr = &owner
-	}
-	payload := h.buildRPApplicationDiscordPayload(app, ownerPtr)
+	owner, _ := h.loadDiscordUser(ctx, app.DiscordID)
+	payload := h.buildRPApplicationDiscordPayload(app, owner)
 
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -656,36 +737,24 @@ func webhookBaseURL(raw string) (string, error) {
 	return strings.TrimRight(parsed.String(), "/"), nil
 }
 
-func parseApplicationModerationIDFromPath(path string) (primitive.ObjectID, bool) {
+func parseApplicationModerationIDFromPath(path string) (string, bool) {
 	trimmed := strings.Trim(path, "/")
 	parts := strings.Split(trimmed, "/")
-	if len(parts) < 5 {
-		return primitive.NilObjectID, false
+	if len(parts) < 5 || parts[0] != "api" || parts[1] != "rp" || parts[2] != "applications" || parts[4] != "moderate" {
+		return "", false
 	}
-	if parts[0] != "api" || parts[1] != "rp" || parts[2] != "applications" || parts[4] != "moderate" {
-		return primitive.NilObjectID, false
-	}
-	id, err := primitive.ObjectIDFromHex(parts[3])
-	if err != nil {
-		return primitive.NilObjectID, false
-	}
-	return id, true
+	id := strings.TrimSpace(parts[3])
+	return id, id != ""
 }
 
-func parseApplicationDeleteIDFromPath(path string) (primitive.ObjectID, bool) {
+func parseApplicationDeleteIDFromPath(path string) (string, bool) {
 	trimmed := strings.Trim(path, "/")
 	parts := strings.Split(trimmed, "/")
-	if len(parts) != 4 {
-		return primitive.NilObjectID, false
+	if len(parts) != 4 || parts[0] != "api" || parts[1] != "rp" || parts[2] != "applications" {
+		return "", false
 	}
-	if parts[0] != "api" || parts[1] != "rp" || parts[2] != "applications" {
-		return primitive.NilObjectID, false
-	}
-	id, err := primitive.ObjectIDFromHex(parts[3])
-	if err != nil {
-		return primitive.NilObjectID, false
-	}
-	return id, true
+	id := strings.TrimSpace(parts[3])
+	return id, id != ""
 }
 
 func normalizeRPRequest(req *rpApplicationRequest) {
@@ -698,6 +767,7 @@ func normalizeRPRequest(req *rpApplicationRequest) {
 	req.Skills = strings.TrimSpace(req.Skills)
 	req.Plan = strings.TrimSpace(req.Plan)
 	req.Biography = strings.TrimSpace(req.Biography)
+	req.PrisonReason = strings.TrimSpace(req.PrisonReason)
 	req.SkinURL = strings.TrimSpace(req.SkinURL)
 }
 
@@ -705,14 +775,17 @@ func validateRPRequest(payload rpApplicationRequest) string {
 	if !minecraftNicknameRe.MatchString(payload.Nickname) {
 		return "nickname must be 3-16 chars and contain only latin letters, digits or _"
 	}
-	if payload.BirthDate == "" || payload.Race == "" || payload.Gender == "" || payload.Skills == "" || payload.Plan == "" || payload.Biography == "" || payload.SkinURL == "" {
+	if payload.BirthDate == "" || payload.Race == "" || payload.Gender == "" || payload.Skills == "" || payload.Plan == "" || payload.Biography == "" || payload.PrisonReason == "" || payload.SkinURL == "" {
 		return "required fields are missing"
+	}
+	if payload.HeightCm < 120 || payload.HeightCm > 250 {
+		return "heightCm must be between 120 and 250"
 	}
 	if len(payload.Source) > 200 || len(payload.RPName) > 120 || len(payload.Race) > 80 || len(payload.Gender) > 80 {
 		return "one of the text fields is too long"
 	}
-	if len(payload.Skills) > 2200 || len(payload.Plan) > 2200 || len(payload.Biography) > 7000 {
-		return "skills, plan or biography is too long"
+	if len(payload.Skills) > 2200 || len(payload.Plan) > 2200 || len(payload.PrisonReason) > 2200 || len(payload.Biography) > 7000 {
+		return "skills, plan, prisonReason or biography is too long"
 	}
 	if _, err := time.Parse("2006-01-02", payload.BirthDate); err != nil {
 		return "birthDate must be in format YYYY-MM-DD"
@@ -758,10 +831,7 @@ func isSafeSkinURL(raw string) bool {
 	if !imageExtRe.MatchString(path) {
 		return false
 	}
-	if len(raw) > 300 {
-		return false
-	}
-	return true
+	return len(raw) <= 300
 }
 
 func randomHex(size int) string {
@@ -778,14 +848,16 @@ func randomHex(size int) string {
 func (h *DiscordAuthHandler) writeModerationHTML(w http.ResponseWriter, app rpApplicationDoc, action string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
-	statusText := "\u0417\u0430\u044f\u0432\u043a\u0430 \u0443\u0436\u0435 \u043e\u0431\u0440\u0430\u0431\u043e\u0442\u0430\u043d\u0430"
+	statusText := "Заявка уже обработана"
 	switch normalizedStatus(app.Status) {
 	case "accepted":
-		statusText = "\u0417\u0430\u044f\u0432\u043a\u0430 \u043f\u0440\u0438\u043d\u044f\u0442\u0430"
+		statusText = "Заявка принята"
 	case "canceled":
-		statusText = "\u0417\u0430\u044f\u0432\u043a\u0430 \u043e\u0442\u043c\u0435\u043d\u0435\u043d\u0430"
+		statusText = "Заявка отменена"
+	case "call":
+		statusText = "Игрок приглашен на созвон"
 	case "pending":
-		statusText = "\u0417\u0430\u044f\u0432\u043a\u0430 \u0432\u043e\u0437\u0432\u0440\u0430\u0449\u0435\u043d\u0430 \u043d\u0430 \u0440\u0430\u0441\u0441\u043c\u043e\u0442\u0440\u0435\u043d\u0438\u0435"
+		statusText = "Заявка возвращена на рассмотрение"
 	}
 
 	html := fmt.Sprintf(`<!doctype html>
@@ -802,9 +874,9 @@ func (h *DiscordAuthHandler) writeModerationHTML(w http.ResponseWriter, app rpAp
   <body>
     <div class="card">
       <h1>%s</h1>
-      <p class="muted">\u041d\u0438\u043a: %s</p>
-      <p class="muted">\u0421\u0442\u0430\u0442\u0443\u0441: %s</p>
-      <p class="muted">\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u0435: %s</p>
+      <p class="muted">Ник: %s</p>
+      <p class="muted">Статус: %s</p>
+      <p class="muted">Действие: %s</p>
     </div>
   </body>
 </html>`, statusText, statusText, app.Nickname, app.Status, action)
@@ -825,8 +897,33 @@ func trimForDiscord(v string) string {
 	if v == "" {
 		return "-"
 	}
-	if len(v) <= 900 {
+	runes := []rune(v)
+	if len(runes) <= 900 {
 		return v
 	}
-	return v[:900] + "..."
+	return string(runes[:900]) + "..."
+}
+
+func (h *DiscordAuthHandler) syncRPDiscordMessages(ctx context.Context) error {
+	if strings.TrimSpace(h.rpWebhookURL) == "" {
+		return nil
+	}
+
+	rows, err := h.db.QueryContext(ctx, rpApplicationSelectSQL+` WHERE discord_message_id <> '' AND status IN ('pending', 'call', 'accepted')`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		app, err := scanRPApplication(rows)
+		if err != nil {
+			return err
+		}
+		if err := h.updateRPApplicationDiscordMessage(*app); err != nil {
+			return err
+		}
+	}
+
+	return rows.Err()
 }

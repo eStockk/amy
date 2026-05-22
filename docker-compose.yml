@@ -1,11 +1,119 @@
 services:
-  mongo:
-    image: mongo:7
+  postgres:
+    image: postgres:16-alpine
     restart: unless-stopped
+    mem_limit: 1536m
+    mem_reservation: 768m
+    shm_size: 256m
+    command:
+      - postgres
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - effective_cache_size=1GB
+      - -c
+      - work_mem=8MB
+      - -c
+      - maintenance_work_mem=128MB
+      - -c
+      - max_connections=80
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-amy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-amy}
+      POSTGRES_DB: ${POSTGRES_DB:-amy}
     ports:
-      - "27017:27017"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - mongo-data:/data/db
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-amy} -d ${POSTGRES_DB:-amy}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    mem_limit: 768m
+    mem_reservation: 256m
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: 8080
+      GOMEMLIMIT: 640MiB
+      GOGC: 100
+      DATABASE_URL: postgres://${POSTGRES_USER:-amy}:${POSTGRES_PASSWORD:-amy}@postgres:5432/${POSTGRES_DB:-amy}?sslmode=disable
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
+      DISCORD_REDIRECT_URL: ${DISCORD_REDIRECT_URL:-http://localhost:8080/api/auth/discord/callback}
+      DISCORD_TICKET_WEBHOOK: ${DISCORD_TICKET_WEBHOOK:-}
+      DISCORD_RP_WEBHOOK: ${DISCORD_RP_WEBHOOK:-}
+      DISCORD_RP_MODERATOR_IDS: ${DISCORD_RP_MODERATOR_IDS:-}
+      MINECRAFT_SERVER_TOKEN: ${MINECRAFT_SERVER_TOKEN:-}
+      MINECRAFT_SERVER_ADDRESS: ${MINECRAFT_SERVER_ADDRESS:-play.amy-world.ru}
+      TELEGRAM_NEWS_CHANNEL: ${TELEGRAM_NEWS_CHANNEL:-}
+      DISCORD_NEWS_CHANNEL_ID: ${DISCORD_NEWS_CHANNEL_ID:-}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    mem_limit: 1024m
+    mem_reservation: 384m
+    depends_on:
+      - backend
+    environment:
+      NODE_OPTIONS: --max-old-space-size=768
+      NUXT_PUBLIC_API_BASE: ${NUXT_PUBLIC_API_BASE:-http://localhost:8080/api}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    restart: unless-stopped
+    mem_limit: 512m
+    mem_reservation: 256m
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-7d}
+      - --storage.tsdb.retention.size=${PROMETHEUS_RETENTION_SIZE:-1GB}
+      - --web.enable-lifecycle
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    depends_on:
+      - backend
+      - frontend
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    restart: unless-stopped
+    mem_limit: 512m
+    mem_reservation: 256m
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-Kekirgjn30}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-JFNA331--~}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DATABASE_WAL: "true"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    depends_on:
+      - prometheus
 
 volumes:
-  mongo-data: {}
+  postgres-data: {}
+  prometheus-data: {}
+  grafana-data: {}

@@ -6,13 +6,44 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
 	"amy/minecraft-server/internal/config"
 	"amy/minecraft-server/internal/db"
 	"amy/minecraft-server/internal/handlers"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
+
+var (
+	httpRequestsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "amy_backend_http_requests_total",
+			Help: "Total backend HTTP requests.",
+		},
+		[]string{"method", "path", "status"},
+	)
+	httpRequestDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "amy_backend_http_request_duration_seconds",
+			Help:    "Backend HTTP request duration.",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"method", "path", "status"},
+	)
+	httpRequestsInFlight = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "amy_backend_http_requests_in_flight",
+			Help: "Backend HTTP requests currently in flight.",
+		},
+	)
+)
+
+func init() {
+	prometheus.MustRegister(httpRequestsTotal, httpRequestDuration, httpRequestsInFlight)
+}
 
 func main() {
 	cfg := config.Load()
@@ -20,26 +51,26 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	client, err := db.Connect(ctx, cfg.MongoURI)
+	postgres, err := db.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {
-		log.Fatalf("failed to connect to mongo: %v", err)
+		log.Fatalf("failed to connect to postgres: %v", err)
 	}
-	defer func() {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = client.Disconnect(shutdownCtx)
-	}()
+	defer postgres.Close()
 
-	database := client.Database(cfg.MongoDB)
+	migrationCtx, migrationCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	if err := db.Migrate(migrationCtx, postgres); err != nil {
+		migrationCancel()
+		log.Fatalf("failed to migrate postgres: %v", err)
+	}
+	migrationCancel()
 
-	healthHandler := handlers.NewHealthHandler(database)
-	playerHandler := handlers.NewPlayerHandler(database)
-	newsHandler := handlers.NewNewsHandler(database, cfg.TelegramNewsChannel, cfg.DiscordBotToken, cfg.DiscordNewsChannelID)
+	healthHandler := handlers.NewHealthHandler(postgres)
+	playerHandler := handlers.NewPlayerHandler(postgres)
+	newsHandler := handlers.NewNewsHandler(postgres, cfg.TelegramNewsChannel, cfg.DiscordBotToken, cfg.DiscordNewsChannelID)
 	serverStatusHandler := handlers.NewServerStatusHandler(cfg.MinecraftServerAddr)
-	authHandler := handlers.NewAuthHandler(database)
-	supportHandler := handlers.NewSupportHandler(database, cfg.DiscordTicketWebhook)
+	supportHandler := handlers.NewSupportHandler(postgres, cfg.DiscordTicketWebhook)
 	discordHandler := handlers.NewDiscordAuthHandler(
-		database,
+		postgres,
 		cfg.DiscordClientID,
 		cfg.DiscordClientSecret,
 		cfg.DiscordRedirectURL,
@@ -50,20 +81,19 @@ func main() {
 		cfg.MinecraftServerToken,
 	)
 
-	migrationCtx, migrationCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	if err := discordHandler.RunMigrations(migrationCtx); err != nil {
+	syncCtx, syncCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	if err := discordHandler.RunMigrations(syncCtx); err != nil {
 		log.Printf("discord migrations failed: %v", err)
 	}
-	migrationCancel()
+	syncCancel()
 
 	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
 	mux.HandleFunc("/api/health", healthHandler.Handle)
 	mux.HandleFunc("/api/players", playerHandler.List)
 	mux.HandleFunc("/api/players/register", playerHandler.Register)
 	mux.HandleFunc("/api/news", newsHandler.List)
 	mux.HandleFunc("/api/server/status", serverStatusHandler.Handle)
-	mux.HandleFunc("/api/auth/register", authHandler.Register)
-	mux.HandleFunc("/api/auth/login", authHandler.Login)
 	mux.HandleFunc("/api/auth/discord/start", discordHandler.Start)
 	mux.HandleFunc("/api/auth/discord/callback", discordHandler.Callback)
 	mux.HandleFunc("/api/auth/me", discordHandler.Me)
@@ -79,7 +109,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           withCORS(cfg.FrontendURL, withLogging(mux)),
+		Handler:           withCORS(cfg.FrontendURL, withMetrics(withLogging(mux))),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -107,6 +137,37 @@ func withLogging(next http.Handler) http.Handler {
 	})
 }
 
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(status int) {
+	r.status = status
+	r.ResponseWriter.WriteHeader(status)
+}
+
+func withMetrics(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/metrics" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		start := time.Now()
+		httpRequestsInFlight.Inc()
+		defer httpRequestsInFlight.Dec()
+
+		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(recorder, r)
+
+		status := strconv.Itoa(recorder.status)
+		route := r.URL.Path
+		httpRequestsTotal.WithLabelValues(r.Method, route, status).Inc()
+		httpRequestDuration.WithLabelValues(r.Method, route, status).Observe(time.Since(start).Seconds())
+	})
+}
+
 func withCORS(allowedOrigin string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if allowedOrigin == "" {
@@ -115,7 +176,7 @@ func withCORS(allowedOrigin string, next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type,X-Server-Token")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return

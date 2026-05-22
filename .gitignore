@@ -10,4 +10,5 @@ frontend/.output/
 frontend/dist/
 
 # General
+.env
 .DS_Store

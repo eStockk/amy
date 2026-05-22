@@ -3,32 +3,23 @@ package models
 import "time"
 
 type News struct {
-	ID        any       `bson:"_id,omitempty" json:"id"`
-	Title     string    `bson:"title" json:"title"`
-	Intro     string    `bson:"intro" json:"intro"`
-	Tags      []string  `bson:"tags" json:"tags"`
-	Source    string    `bson:"source,omitempty" json:"source,omitempty"`
-	URL       string    `bson:"url,omitempty" json:"url,omitempty"`
-	Variant   string    `bson:"variant,omitempty" json:"variant,omitempty"`
-	CreatedAt time.Time `bson:"createdAt" json:"createdAt"`
-}
-
-// User represents a registered account.
-type User struct {
-	ID           any       `bson:"_id,omitempty" json:"id"`
-	Email        string    `bson:"email" json:"email"`
-	Name         string    `bson:"name" json:"name"`
-	PasswordHash string    `bson:"passwordHash" json:"-"`
-	CreatedAt    time.Time `bson:"createdAt" json:"createdAt"`
+	ID        string    `json:"id"`
+	Title     string    `json:"title"`
+	Intro     string    `json:"intro"`
+	Tags      []string  `json:"tags"`
+	Source    string    `json:"source,omitempty"`
+	URL       string    `json:"url,omitempty"`
+	Variant   string    `json:"variant,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 // Ticket represents a support request.
 type Ticket struct {
-	ID        any       `bson:"_id,omitempty" json:"id"`
-	Name      string    `bson:"name" json:"name"`
-	Email     string    `bson:"email" json:"email"`
-	Subject   string    `bson:"subject" json:"subject"`
-	Category  string    `bson:"category" json:"category"`
-	Message   string    `bson:"message" json:"message"`
-	CreatedAt time.Time `bson:"createdAt" json:"createdAt"`
+	ID        int64     `json:"id"`
+	Name      string    `json:"name"`
+	Email     string    `json:"email"`
+	Subject   string    `json:"subject"`
+	Category  string    `json:"category"`
+	Message   string    `json:"message"`
+	CreatedAt time.Time `json:"createdAt"`
 }

@@ -1,11 +1,13 @@
 ﻿export type RPApplicationSummary = {
   id: string
-  status: 'pending' | 'accepted' | 'canceled' | 'approved' | 'rejected'
+  status: 'pending' | 'call' | 'accepted' | 'canceled' | 'approved' | 'rejected'
   nickname: string
   rpName?: string
   race?: string
   gender?: string
+  heightCm?: number
   birthDate?: string
+  prisonReason?: string
   createdAt?: string
   updatedAt?: string
   moderatedAt?: string
@@ -38,9 +40,11 @@ type RPApplicationPayload = {
   birthDate: string
   race: string
   gender: string
+  heightCm: number
   skills: string
   plan: string
   biography: string
+  prisonReason: string
   skinUrl: string
 }
 

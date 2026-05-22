@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
-
-	"go.mongodb.org/mongo-driver/bson"
 )
 
 type presencePingRequest struct {
@@ -37,11 +35,13 @@ func (h *DiscordAuthHandler) PresencePing(w http.ResponseWriter, r *http.Request
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	_, err = h.userCollection.UpdateOne(ctx, bson.M{"discordId": user.DiscordID}, bson.M{"$set": bson.M{
-		"presenceActive": active,
-		"lastSeenAt":     now,
-		"updatedAt":      now,
-	}})
+	_, err = h.db.ExecContext(
+		ctx,
+		`UPDATE discord_users SET presence_active = $1, last_seen_at = $2, updated_at = $2 WHERE discord_id = $3`,
+		active,
+		now,
+		user.DiscordID,
+	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update presence")
 		return

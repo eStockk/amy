@@ -4,8 +4,7 @@ import "os"
 
 type Config struct {
 	Port                 string
-	MongoURI             string
-	MongoDB              string
+	DatabaseURL          string
 	FrontendURL          string
 	DiscordClientID      string
 	DiscordClientSecret  string
@@ -23,8 +22,7 @@ type Config struct {
 func Load() Config {
 	return Config{
 		Port:                 getEnv("PORT", "8080"),
-		MongoURI:             getEnv("MONGO_URI", "mongodb://localhost:27017"),
-		MongoDB:              getEnv("MONGO_DB", "minecraft"),
+		DatabaseURL:          getEnv("DATABASE_URL", "postgres://amy:amy@localhost:5432/amy?sslmode=disable"),
 		FrontendURL:          getEnv("FRONTEND_URL", "http://localhost:3000"),
 		DiscordClientID:      getEnv("DISCORD_CLIENT_ID", ""),
 		DiscordClientSecret:  getEnv("DISCORD_CLIENT_SECRET", ""),

@@ -2,25 +2,22 @@ package handlers
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"time"
-
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type PlayerHandler struct {
-	collection *mongo.Collection
+	db *sql.DB
 }
 
 type registerPlayerRequest struct {
 	Name string `json:"name"`
 }
 
-func NewPlayerHandler(db *mongo.Database) *PlayerHandler {
-	return &PlayerHandler{collection: db.Collection("players")}
+func NewPlayerHandler(db *sql.DB) *PlayerHandler {
+	return &PlayerHandler{db: db}
 }
 
 func (h *PlayerHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -32,15 +29,25 @@ func (h *PlayerHandler) List(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	cursor, err := h.collection.Find(ctx, bson.M{}, options.Find().SetLimit(50))
+	rows, err := h.db.QueryContext(ctx, `SELECT id, name, created_at FROM players ORDER BY created_at DESC LIMIT 50`)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to query players")
 		return
 	}
-	defer cursor.Close(ctx)
+	defer rows.Close()
 
-	players := make([]bson.M, 0)
-	if err := cursor.All(ctx, &players); err != nil {
+	players := make([]map[string]any, 0)
+	for rows.Next() {
+		var id int64
+		var name string
+		var createdAt time.Time
+		if err := rows.Scan(&id, &name, &createdAt); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to read players")
+			return
+		}
+		players = append(players, map[string]any{"id": id, "name": name, "createdAt": createdAt})
+	}
+	if err := rows.Err(); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to read players")
 		return
 	}
@@ -67,14 +74,11 @@ func (h *PlayerHandler) Register(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	result, err := h.collection.InsertOne(ctx, bson.M{
-		"name":      payload.Name,
-		"createdAt": time.Now().UTC(),
-	})
-	if err != nil {
+	var id int64
+	if err := h.db.QueryRowContext(ctx, `INSERT INTO players (name, created_at) VALUES ($1, $2) RETURNING id`, payload.Name, time.Now().UTC()).Scan(&id); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to register player")
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]any{"id": result.InsertedID})
+	writeJSON(w, http.StatusCreated, map[string]any{"id": id})
 }

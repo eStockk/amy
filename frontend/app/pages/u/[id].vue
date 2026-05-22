@@ -99,7 +99,7 @@
         <section v-if="isOwner" class="panel application-card">
           <div class="section-head">
             <h3>Шаг 2: RP-заявка</h3>
-            <span class="badge">{{ progressCompleted }}/10</span>
+            <span class="badge">{{ progressCompleted }}/12</span>
           </div>
 
           <p class="muted">Форма заполняется в модальном окне и отправляется в Discord-канал модерации.</p>
@@ -109,7 +109,7 @@
               {{ applicationSummary ? openApplicationLabel : createApplicationLabel }}
             </button>
             <span v-if="applicationAccepted" class="muted">{{ acceptedHint }}</span>
-            <span v-else-if="applicationLocked" class="muted">{{ pendingHint }}</span>
+            <span v-else-if="applicationLocked" class="muted">{{ lockedHint }}</span>
           </div>
 
           <p v-if="submitMessage" class="status" :class="{ error: submitError }">{{ submitMessage }}</p>
@@ -163,23 +163,33 @@
               <input v-model.trim="form.gender" type="text" maxlength="80" required />
             </label>
 
+            <label>
+              <span>7. Рост персонажа, см</span>
+              <input v-model.number="form.heightCm" type="number" min="120" max="250" required />
+            </label>
+
             <label class="wide">
-              <span>7. Перечисли ключевые навыки персонажа и их пользу для RP</span>
+              <span>8. Перечисли ключевые навыки персонажа и их пользу для RP</span>
               <textarea v-model.trim="form.skills" rows="4" required></textarea>
             </label>
 
             <label class="wide">
-              <span>8. План развития персонажа в RP</span>
+              <span>9. План развития персонажа в RP</span>
               <textarea v-model.trim="form.plan" rows="4" required></textarea>
             </label>
 
             <label class="wide">
-              <span>9. Биография (минимум 5 предложений)</span>
+              <span>10. Биография (минимум 5 предложений)</span>
               <textarea v-model.trim="form.biography" rows="6" required></textarea>
             </label>
 
             <label class="wide">
-              <span>10. Ссылка на скин (только безопасный HTTPS URL на png/jpg/webp)</span>
+              <span>11. Причина ссылки на тюремный остров</span>
+              <textarea v-model.trim="form.prisonReason" rows="4" required></textarea>
+            </label>
+
+            <label class="wide">
+              <span>12. Ссылка на скин (только безопасный HTTPS URL на png/jpg/webp)</span>
               <input v-model.trim="form.skinUrl" type="url" required />
             </label>
 
@@ -264,9 +274,11 @@ const form = reactive({
   birthDate: '',
   race: '',
   gender: '',
+  heightCm: 170,
   skills: '',
   plan: '',
   biography: '',
+  prisonReason: '',
   skinUrl: ''
 })
 
@@ -285,6 +297,7 @@ const onlineStatusLabel = computed(() =>
 const statusLabelPublic = '\u041f\u0443\u0431\u043b\u0438\u0447\u043d\u044b\u0439 \u0432\u0438\u0434 \u043f\u0440\u043e\u0444\u0438\u043b\u044f'
 const statusLabelAccepted = '\u041f\u0440\u0438\u043d\u044f\u0442\u0430'
 const statusLabelCanceled = '\u041e\u0442\u043c\u0435\u043d\u0435\u043d\u0430'
+const statusLabelCall = 'Администрация сервера свяжется с вами для проведения созвона и уточнения некоторых деталей.'
 const statusLabelPending = '\u041d\u0430 \u0440\u0430\u0441\u0441\u043c\u043e\u0442\u0440\u0435\u043d\u0438\u0438'
 const statusLabelMissing = '\u0415\u0449\u0435 \u043d\u0435 \u043e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0430'
 
@@ -294,13 +307,14 @@ const applicationStatusLabel = computed(() => {
   const status = applicationSummary.value?.status
   if (status === 'accepted' || status === 'approved') return statusLabelAccepted
   if (status === 'canceled' || status === 'rejected') return statusLabelCanceled
+  if (status === 'call') return statusLabelCall
   if (status === 'pending') return statusLabelPending
   return statusLabelMissing
 })
 
 const applicationLocked = computed(() => {
   const status = applicationSummary.value?.status
-  return status === 'pending' || status === 'accepted' || status === 'approved'
+  return status === 'pending' || status === 'call' || status === 'accepted' || status === 'approved'
 })
 
 const applicationAccepted = computed(() => {
@@ -315,10 +329,13 @@ const canDeleteApplication = computed(() => {
 
 const acceptedHint = '\u0417\u0430\u044f\u0432\u043a\u0430 \u043f\u0440\u0438\u043d\u044f\u0442\u0430. \u041f\u043e\u0432\u0442\u043e\u0440\u043d\u0430\u044f \u043e\u0442\u043f\u0440\u0430\u0432\u043a\u0430 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430.'
 const pendingHint = '\u0423 \u0432\u0430\u0441 \u0443\u0436\u0435 \u0435\u0441\u0442\u044c \u0437\u0430\u044f\u0432\u043a\u0430 \u0432 \u0441\u0442\u0430\u0442\u0443\u0441\u0435 \u00ab\u043d\u0430 \u0440\u0430\u0441\u0441\u043c\u043e\u0442\u0440\u0435\u043d\u0438\u0438\u00bb.'
+const callHint = statusLabelCall
 const openApplicationLabel = '\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u0437\u0430\u044f\u0432\u043a\u0443'
 const createApplicationLabel = '\u0421\u043e\u0437\u0434\u0430\u0442\u044c RP-\u0437\u0430\u044f\u0432\u043a\u0443'
 const acceptedSubmitErrorText = '\u0417\u0430\u044f\u0432\u043a\u0430 \u0443\u0436\u0435 \u043f\u0440\u0438\u043d\u044f\u0442\u0430. \u041f\u043e\u0432\u0442\u043e\u0440\u043d\u0430\u044f \u043e\u0442\u043f\u0440\u0430\u0432\u043a\u0430 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430.'
 const pendingSubmitErrorText = '\u0422\u0435\u043a\u0443\u0449\u0430\u044f \u0437\u0430\u044f\u0432\u043a\u0430 \u0435\u0449\u0435 \u0440\u0430\u0441\u0441\u043c\u0430\u0442\u0440\u0438\u0432\u0430\u0435\u0442\u0441\u044f \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u0435\u0439.'
+
+const lockedHint = computed(() => (applicationSummary.value?.status === 'call' ? callHint : pendingHint))
 
 const progressCompleted = computed(() => {
   const fields = [
@@ -328,15 +345,17 @@ const progressCompleted = computed(() => {
     form.birthDate,
     form.race,
     form.gender,
+    form.heightCm,
     form.skills,
     form.plan,
     form.biography,
+    form.prisonReason,
     form.skinUrl
   ]
   return fields.filter((item) => String(item || '').trim().length > 0).length
 })
 
-const progressPercent = computed(() => Math.round((progressCompleted.value / 10) * 100))
+const progressPercent = computed(() => Math.round((progressCompleted.value / 12) * 100))
 
 const fillFromCurrentState = (authUser?: AuthUser | null) => {
   if (!authUser) return
@@ -347,6 +366,8 @@ const fillFromCurrentState = (authUser?: AuthUser | null) => {
   if (authUser.rpApplication?.birthDate) form.birthDate = authUser.rpApplication.birthDate
   if (authUser.rpApplication?.race) form.race = authUser.rpApplication.race
   if (authUser.rpApplication?.gender) form.gender = authUser.rpApplication.gender
+  if (authUser.rpApplication?.heightCm) form.heightCm = authUser.rpApplication.heightCm
+  if (authUser.rpApplication?.prisonReason) form.prisonReason = authUser.rpApplication.prisonReason
 }
 
 const formatDate = (raw?: string, dateOnly = false) => {
@@ -491,7 +512,7 @@ const submitApplication = async () => {
 
   if (applicationLocked.value) {
     submitError.value = true
-    submitMessage.value = pendingSubmitErrorText
+    submitMessage.value = applicationSummary.value?.status === 'call' ? callHint : pendingSubmitErrorText
     return
   }
 
@@ -501,9 +522,15 @@ const submitApplication = async () => {
     return
   }
 
-  if (!form.birthDate || !form.race || !form.gender || !form.skills || !form.plan || !form.biography || !form.skinUrl) {
+  if (!form.birthDate || !form.race || !form.gender || !form.skills || !form.plan || !form.biography || !form.prisonReason || !form.skinUrl) {
     submitError.value = true
     submitMessage.value = 'Заполните все обязательные поля заявки.'
+    return
+  }
+
+  if (!Number.isFinite(form.heightCm) || form.heightCm < 120 || form.heightCm > 250) {
+    submitError.value = true
+    submitMessage.value = 'Рост должен быть числом от 120 до 250 см.'
     return
   }
 
@@ -528,9 +555,11 @@ const submitApplication = async () => {
       birthDate: form.birthDate,
       race: form.race,
       gender: form.gender,
+      heightCm: form.heightCm,
       skills: form.skills,
       plan: form.plan,
       biography: form.biography,
+      prisonReason: form.prisonReason,
       skinUrl: form.skinUrl
     })
 

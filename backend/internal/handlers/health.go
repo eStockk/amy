@@ -2,17 +2,16 @@ package handlers
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
 	"time"
-
-	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type HealthHandler struct {
-	db *mongo.Database
+	db *sql.DB
 }
 
-func NewHealthHandler(db *mongo.Database) *HealthHandler {
+func NewHealthHandler(db *sql.DB) *HealthHandler {
 	return &HealthHandler{db: db}
 }
 
@@ -25,7 +24,7 @@ func (h *HealthHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
 
-	if err := h.db.Client().Ping(ctx, nil); err != nil {
+	if err := h.db.PingContext(ctx); err != nil {
 		writeError(w, http.StatusServiceUnavailable, "database unavailable")
 		return
 	}

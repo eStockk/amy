@@ -4,25 +4,22 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
+	"database/sql"
 	"encoding/json"
 	"math/big"
 	"net/http"
 	"strings"
 	"time"
-
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type minecraftVerificationCodeDoc struct {
-	Code          string    `bson:"code"`
-	DiscordID     string    `bson:"discordId"`
-	Nickname      string    `bson:"nickname"`
-	ApplicationID string    `bson:"applicationId"`
-	Used          bool      `bson:"used"`
-	ExpiresAt     time.Time `bson:"expiresAt"`
-	CreatedAt     time.Time `bson:"createdAt"`
+	Code          string
+	DiscordID     string
+	Nickname      string
+	ApplicationID string
+	Used          bool
+	ExpiresAt     time.Time
+	CreatedAt     time.Time
 }
 
 type verificationCodeRequest struct {
@@ -70,8 +67,7 @@ func (h *DiscordAuthHandler) RequestMinecraftVerificationCode(w http.ResponseWri
 		return
 	}
 
-	var existingUser discordUserDoc
-	err = h.userCollection.FindOne(ctx, bson.M{"discordId": application.DiscordID}).Decode(&existingUser)
+	existingUser, err := h.loadDiscordUser(ctx, application.DiscordID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "discord account not found")
 		return
@@ -83,17 +79,34 @@ func (h *DiscordAuthHandler) RequestMinecraftVerificationCode(w http.ResponseWri
 
 	now := time.Now().UTC()
 	var existingCode minecraftVerificationCodeDoc
-	codeFilter := bson.M{
-		"discordId": application.DiscordID,
-		"nickname":  payload.Nickname,
-		"used":      false,
-		"expiresAt": bson.M{"$gt": now},
-	}
-	if err := h.codeCollection.FindOne(ctx, codeFilter, options.FindOne().SetSort(bson.D{{Key: "createdAt", Value: -1}})).Decode(&existingCode); err == nil {
+	err = h.db.QueryRowContext(
+		ctx,
+		`SELECT code, discord_id, nickname, application_id, used, expires_at, created_at
+		 FROM minecraft_verification_codes
+		 WHERE discord_id = $1 AND nickname = $2 AND used = FALSE AND expires_at > $3
+		 ORDER BY created_at DESC
+		 LIMIT 1`,
+		application.DiscordID,
+		payload.Nickname,
+		now,
+	).Scan(
+		&existingCode.Code,
+		&existingCode.DiscordID,
+		&existingCode.Nickname,
+		&existingCode.ApplicationID,
+		&existingCode.Used,
+		&existingCode.ExpiresAt,
+		&existingCode.CreatedAt,
+	)
+	if err == nil {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"code":      existingCode.Code,
 			"expiresAt": existingCode.ExpiresAt,
 		})
+		return
+	}
+	if err != sql.ErrNoRows {
+		writeError(w, http.StatusInternalServerError, "failed to load verification code")
 		return
 	}
 
@@ -102,13 +115,25 @@ func (h *DiscordAuthHandler) RequestMinecraftVerificationCode(w http.ResponseWri
 		Code:          randomVerificationCode(8),
 		DiscordID:     application.DiscordID,
 		Nickname:      payload.Nickname,
-		ApplicationID: application.ID.Hex(),
+		ApplicationID: application.ID,
 		Used:          false,
 		ExpiresAt:     expiresAt,
 		CreatedAt:     now,
 	}
 
-	if _, err := h.codeCollection.InsertOne(ctx, newCode); err != nil {
+	_, err = h.db.ExecContext(
+		ctx,
+		`INSERT INTO minecraft_verification_codes (code, discord_id, nickname, application_id, used, expires_at, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		newCode.Code,
+		newCode.DiscordID,
+		newCode.Nickname,
+		newCode.ApplicationID,
+		newCode.Used,
+		newCode.ExpiresAt,
+		newCode.CreatedAt,
+	)
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to generate code")
 		return
 	}
@@ -147,11 +172,22 @@ func (h *DiscordAuthHandler) VerifyMinecraftCode(w http.ResponseWriter, r *http.
 	defer cancel()
 
 	var codeDoc minecraftVerificationCodeDoc
-	err = h.codeCollection.FindOne(ctx, bson.M{
-		"code":      payload.Code,
-		"used":      false,
-		"expiresAt": bson.M{"$gt": time.Now().UTC()},
-	}).Decode(&codeDoc)
+	err = h.db.QueryRowContext(
+		ctx,
+		`SELECT code, discord_id, nickname, application_id, used, expires_at, created_at
+		 FROM minecraft_verification_codes
+		 WHERE code = $1 AND used = FALSE AND expires_at > $2`,
+		payload.Code,
+		time.Now().UTC(),
+	).Scan(
+		&codeDoc.Code,
+		&codeDoc.DiscordID,
+		&codeDoc.Nickname,
+		&codeDoc.ApplicationID,
+		&codeDoc.Used,
+		&codeDoc.ExpiresAt,
+		&codeDoc.CreatedAt,
+	)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "code is invalid or expired")
 		return
@@ -163,17 +199,21 @@ func (h *DiscordAuthHandler) VerifyMinecraftCode(w http.ResponseWriter, r *http.
 	}
 
 	now := time.Now().UTC()
-	_, err = h.userCollection.UpdateOne(ctx, bson.M{"discordId": user.DiscordID}, bson.M{"$set": bson.M{
-		"linkedMinecraft":     codeDoc.Nickname,
-		"minecraftVerifiedAt": now,
-		"updatedAt":           now,
-	}})
+	_, err = h.db.ExecContext(
+		ctx,
+		`UPDATE discord_users
+		 SET linked_minecraft = $1, minecraft_verified_at = $2, updated_at = $2
+		 WHERE discord_id = $3`,
+		codeDoc.Nickname,
+		now,
+		user.DiscordID,
+	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to link account")
 		return
 	}
 
-	_, _ = h.codeCollection.UpdateOne(ctx, bson.M{"code": codeDoc.Code}, bson.M{"$set": bson.M{"used": true}})
+	_, _ = h.db.ExecContext(ctx, `UPDATE minecraft_verification_codes SET used = TRUE WHERE code = $1`, codeDoc.Code)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":   "ok",
@@ -214,16 +254,21 @@ func (h *DiscordAuthHandler) UpdateMineRPName(w http.ResponseWriter, r *http.Req
 	defer cancel()
 
 	now := time.Now().UTC()
-	result, err := h.userCollection.UpdateOne(ctx, bson.M{"linkedMinecraft": payload.Nickname}, bson.M{"$set": bson.M{
-		"rpFirstName": payload.FirstName,
-		"rpLastName":  payload.LastName,
-		"updatedAt":   now,
-	}})
+	result, err := h.db.ExecContext(
+		ctx,
+		`UPDATE discord_users
+		 SET rp_first_name = $1, rp_last_name = $2, updated_at = $3
+		 WHERE linked_minecraft = $4`,
+		payload.FirstName,
+		payload.LastName,
+		now,
+		payload.Nickname,
+	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update rp name")
 		return
 	}
-	if result.MatchedCount == 0 {
+	if rows, _ := result.RowsAffected(); rows == 0 {
 		writeError(w, http.StatusNotFound, "linked user not found")
 		return
 	}
@@ -234,30 +279,17 @@ func (h *DiscordAuthHandler) UpdateMineRPName(w http.ResponseWriter, r *http.Req
 func (h *DiscordAuthHandler) requireAuthenticatedUser(r *http.Request) (*discordUserDoc, error) {
 	cookie, err := r.Cookie("discord_id")
 	if err != nil || strings.TrimSpace(cookie.Value) == "" {
-		return nil, mongo.ErrNoDocuments
+		return nil, sql.ErrNoRows
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	var user discordUserDoc
-	if err := h.userCollection.FindOne(ctx, bson.M{"discordId": cookie.Value}).Decode(&user); err != nil {
-		return nil, err
-	}
-	return &user, nil
+	return h.loadDiscordUser(ctx, cookie.Value)
 }
 
 func (h *DiscordAuthHandler) findApprovedApplicationByNickname(ctx context.Context, nickname string) (*rpApplicationDoc, error) {
-	findOpts := options.FindOne().SetSort(bson.D{{Key: "updatedAt", Value: -1}})
-	var app rpApplicationDoc
-	err := h.rpCollection.FindOne(ctx, bson.M{
-		"nickname": nickname,
-		"status":   bson.M{"$in": []string{"accepted", "approved"}},
-	}, findOpts).Decode(&app)
-	if err != nil {
-		return nil, err
-	}
-	return &app, nil
+	return scanRPApplication(h.db.QueryRowContext(ctx, rpApplicationSelectSQL+` WHERE nickname = $1 AND status IN ('accepted', 'approved') ORDER BY updated_at DESC LIMIT 1`, nickname))
 }
 
 func (h *DiscordAuthHandler) validateServerToken(r *http.Request) bool {
