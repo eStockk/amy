@@ -1,0 +1,86 @@
+stages:
+  - test
+  - build
+  - deploy
+
+variables:
+  DEPLOY_PATH: "/opt/amy/app"
+  DOCKER_COMPOSE_FILE: "docker-compose.yml"
+
+backend:test:
+  stage: test
+  image: golang:1.23-alpine
+  cache:
+    key: "go-${CI_COMMIT_REF_SLUG}"
+    paths:
+      - backend/.go/pkg/mod
+  before_script:
+    - cd backend
+    - go env -w GOPATH="$CI_PROJECT_DIR/backend/.go"
+  script:
+    - go test ./...
+
+frontend:build:
+  stage: build
+  image: node:22-alpine
+  cache:
+    key:
+      files:
+        - frontend/package-lock.json
+    paths:
+      - frontend/.npm
+  before_script:
+    - cd frontend
+    - npm ci --cache .npm --prefer-offline
+  script:
+    - npm run build
+  artifacts:
+    expire_in: 1 day
+    paths:
+      - frontend/.output
+
+compose:config:
+  stage: build
+  image: docker:27-cli
+  script:
+    - docker compose -f "$DOCKER_COMPOSE_FILE" config
+
+deploy:production:
+  stage: deploy
+  image: alpine:3.20
+  needs:
+    - backend:test
+    - frontend:build
+    - compose:config
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  before_script:
+    - apk add --no-cache openssh-client rsync
+    - test -n "$DEPLOY_HOST"
+    - test -n "$DEPLOY_USER"
+    - test -n "$SSH_PRIVATE_KEY"
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+    - chmod 600 ~/.ssh/id_ed25519
+    - ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+  script:
+    - >
+      rsync -az --delete
+      --exclude ".git"
+      --exclude ".env"
+      --exclude "node_modules"
+      --exclude ".output"
+      --exclude ".nuxt"
+      --exclude "backend/.go"
+      ./ "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
+    - >
+      ssh "$DEPLOY_USER@$DEPLOY_HOST"
+      "cd '$DEPLOY_PATH'
+      && { docker rm -f amy_caddy >/dev/null 2>&1 || true;
+      docker-compose -f docker-compose.yml down --remove-orphans;
+      docker-compose -f docker-compose.yml up -d --build;
+      docker image prune -f; }"
+  environment:
+    name: production
+    url: https://amyworld.ru
