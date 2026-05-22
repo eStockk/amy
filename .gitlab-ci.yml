@@ -4,8 +4,9 @@ stages:
   - deploy
 
 variables:
-  DEPLOY_PATH: "/opt/amy/app"
+  DEPLOY_PATH: "/deploy/amy"
   DOCKER_COMPOSE_FILE: "docker-compose.yml"
+  COMPOSE_PROJECT_NAME: "app"
 
 backend:test:
   stage: test
@@ -47,7 +48,7 @@ compose:config:
 
 deploy:production:
   stage: deploy
-  image: alpine:3.20
+  image: docker:27-cli
   needs:
     - backend:test
     - frontend:build
@@ -55,15 +56,9 @@ deploy:production:
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
   before_script:
-    - apk add --no-cache openssh-client rsync
-    - test -n "$DEPLOY_HOST"
-    - test -n "$DEPLOY_USER"
-    - test -n "$SSH_PRIVATE_KEY"
-    - mkdir -p ~/.ssh
-    - chmod 700 ~/.ssh
-    - printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
-    - chmod 600 ~/.ssh/id_ed25519
-    - ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+    - apk add --no-cache rsync
+    - docker version
+    - test -d "$DEPLOY_PATH"
   script:
     - >
       rsync -az --delete
@@ -73,14 +68,13 @@ deploy:production:
       --exclude ".output"
       --exclude ".nuxt"
       --exclude "backend/.go"
-      ./ "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
+      ./ "$DEPLOY_PATH/"
     - >
-      ssh "$DEPLOY_USER@$DEPLOY_HOST"
-      "cd '$DEPLOY_PATH'
-      && { docker rm -f amy_caddy >/dev/null 2>&1 || true;
-      docker-compose -f docker-compose.yml down --remove-orphans;
-      docker-compose -f docker-compose.yml up -d --build;
-      docker image prune -f; }"
+      cd "$DEPLOY_PATH"
+      && docker rm -f amy_caddy >/dev/null 2>&1 || true
+      && docker compose -p "$COMPOSE_PROJECT_NAME" -f docker-compose.yml down --remove-orphans
+      && docker compose -p "$COMPOSE_PROJECT_NAME" -f docker-compose.yml up -d --build
+      && docker image prune -f
   environment:
     name: production
     url: https://amyworld.ru

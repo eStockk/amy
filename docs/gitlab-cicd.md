@@ -7,47 +7,62 @@ Pipeline file: `.gitlab-ci.yml`.
 - Runs backend tests with Go 1.23.
 - Builds the Nuxt frontend with Node 22.
 - Validates `docker-compose.yml`.
-- Deploys `main` to the VPS over SSH.
+- Deploys `main` from a self-hosted GitLab Runner Docker container on the VPS.
 - Keeps the server `.env` file intact.
 - Rebuilds and restarts Docker Compose services on deploy.
 
-## Required GitLab CI/CD Variables
+## GitLab Runner Container On VPS
 
-Add these in:
+The runner is registered as:
 
-`GitLab -> Project -> Settings -> CI/CD -> Variables`
+```text
+amy-vps-docker
+```
 
-| Variable | Example | Notes |
+With the new GitLab runner authentication tokens, tags and "run untagged jobs" are controlled in the GitLab UI when the runner is created. The pipeline intentionally does not require tags, so it can run on this project runner without extra YAML changes.
+
+The runner uses Docker executor and mounts:
+
+| Host path | Job container path | Purpose |
 | --- | --- | --- |
-| `DEPLOY_HOST` | `5.83.140.117` | VPS IP address |
-| `DEPLOY_USER` | `root` | SSH user |
-| `DEPLOY_PATH` | `/opt/amy/app` | Optional, defaults to this path |
-| `SSH_PRIVATE_KEY` | private deploy key | Must match a public key in `/root/.ssh/authorized_keys` |
+| `/var/run/docker.sock` | `/var/run/docker.sock` | Let deploy job control host Docker |
+| `/opt/amy/app` | `/deploy/amy` | Deploy target workspace |
+| runner cache volume | `/cache` | GitLab Runner cache |
 
-Mark `SSH_PRIVATE_KEY` as masked and protected if the project allows it.
+The pipeline uses `COMPOSE_PROJECT_NAME=app` to keep existing Docker volumes and container names compatible with the previous manual deployment.
 
-## Create A Deploy SSH Key
+## Register Runner Manually
 
-Create a key locally:
+Use a GitLab runner authentication token from:
 
-```bash
-ssh-keygen -t ed25519 -C "amy-gitlab-ci" -f amy_gitlab_ci
-```
-
-Add the public key to the server:
+`GitLab -> Project -> Settings -> CI/CD -> Runners -> New project runner`
 
 ```bash
-ssh root@5.83.140.117 "mkdir -p ~/.ssh && chmod 700 ~/.ssh"
-cat amy_gitlab_ci.pub | ssh root@5.83.140.117 "cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+docker volume create gitlab-runner-config
+
+docker run --rm \
+  -v gitlab-runner-config:/etc/gitlab-runner \
+  gitlab/gitlab-runner:alpine register \
+  --non-interactive \
+  --url "https://gitlab.com" \
+  --token "YOUR_RUNNER_TOKEN" \
+  --executor "docker" \
+  --docker-image "alpine:3.20" \
+  --name "amy-vps-docker" \
+  --docker-pull-policy "if-not-present" \
+  --docker-volumes "/cache" \
+  --docker-volumes "/var/run/docker.sock:/var/run/docker.sock" \
+  --docker-volumes "/opt/amy/app:/deploy/amy"
+
+docker run -d \
+  --name gitlab-runner \
+  --restart always \
+  -v gitlab-runner-config:/etc/gitlab-runner \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  gitlab/gitlab-runner:alpine
 ```
 
-Put the private key content into GitLab variable `SSH_PRIVATE_KEY`:
-
-```bash
-cat amy_gitlab_ci
-```
-
-Do not commit this private key.
+Do not commit runner tokens.
 
 ## Server Requirements
 
