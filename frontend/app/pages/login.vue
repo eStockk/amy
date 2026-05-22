@@ -8,28 +8,12 @@
           <p>Войдите, чтобы управлять профилем и заявками.</p>
         </div>
       </div>
-      <form class="form" @submit.prevent="submit">
-        <label>
-          Email *
-          <input v-model="email" type="email" required />
-        </label>
-        <label>
-          Пароль *
-          <input v-model="password" type="password" required />
-        </label>
-        <div class="row">
-          <label class="check">
-            <input type="checkbox" />
-            <span>Запомнить меня</span>
-          </label>
-          <a class="link" href="#">Забыли пароль?</a>
-        </div>
-        <button type="submit" class="primary">Войти</button>
-        <p v-if="message" class="message">{{ message }}</p>
-      </form>
+      <div class="form">
+        <NuxtLink v-if="authenticated" class="primary" :to="profilePath">Открыть профиль</NuxtLink>
+        <a v-else class="primary discord-login" :href="loginUrl">Войти через Discord</a>
+      </div>
       <div class="switch">
-        Нет аккаунта?
-        <NuxtLink to="/register">Зарегистрироваться</NuxtLink>
+        Аккаунт создается автоматически после входа через Discord.
       </div>
     </div>
 
@@ -53,23 +37,7 @@
 <script setup lang="ts">
 import logo from '~/assets/amy-logo.png'
 
-const email = ref('')
-const password = ref('')
-const message = ref('')
-const config = useRuntimeConfig()
-
-const submit = async () => {
-  message.value = ''
-  try {
-    await $fetch(`${config.public.apiBase}/auth/login`, {
-      method: 'POST',
-      body: { email: email.value, password: password.value }
-    })
-    message.value = 'Успешный вход.'
-  } catch {
-    message.value = 'Неверный email или пароль.'
-  }
-}
+const { authenticated, loginUrl, profilePath } = useAuth()
 </script>
 
 <style scoped>
@@ -185,11 +153,12 @@ input:focus {
   color: #fff;
   font-weight: 600;
   cursor: pointer;
+  text-align: center;
+  text-decoration: none;
 }
 
-.message {
-  color: var(--muted);
-  font-size: 13px;
+.discord-login {
+  background: #5865f2;
 }
 
 .switch {
