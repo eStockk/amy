@@ -2,6 +2,7 @@ type Labels = {
   method: string
   path: string
   status: string
+  clientIp: string
 }
 
 const buckets = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]
@@ -11,12 +12,19 @@ const durationSums = new Map<string, number>()
 const durationCounts = new Map<string, number>()
 let inFlight = 0
 
-const keyFor = (labels: Labels) => `${labels.method}\u0000${labels.path}\u0000${labels.status}`
+const keyFor = (labels: Labels) => `${labels.method}\u0000${labels.path}\u0000${labels.status}\u0000${labels.clientIp}`
 
 const labelsFor = (key: string) => {
+  const [method, path, status, clientIp] = key.split('\u0000')
+  return `method="${escapeLabel(method)}",path="${escapeLabel(path)}",status="${escapeLabel(status)}",client_ip="${escapeLabel(clientIp)}"`
+}
+
+const durationLabelsFor = (key: string) => {
   const [method, path, status] = key.split('\u0000')
   return `method="${escapeLabel(method)}",path="${escapeLabel(path)}",status="${escapeLabel(status)}"`
 }
+
+const durationKeyFor = (labels: Labels) => `${labels.method}\u0000${labels.path}\u0000${labels.status}`
 
 const escapeLabel = (value = '') => value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')
 
@@ -29,16 +37,17 @@ export const finishFrontendRequest = (labels: Labels, seconds: number) => {
 
   const key = keyFor(labels)
   requests.set(key, (requests.get(key) || 0) + 1)
-  durationSums.set(key, (durationSums.get(key) || 0) + seconds)
-  durationCounts.set(key, (durationCounts.get(key) || 0) + 1)
+  const durationKey = durationKeyFor(labels)
+  durationSums.set(durationKey, (durationSums.get(durationKey) || 0) + seconds)
+  durationCounts.set(durationKey, (durationCounts.get(durationKey) || 0) + 1)
 
-  const values = durationBuckets.get(key) || buckets.map(() => 0)
+  const values = durationBuckets.get(durationKey) || buckets.map(() => 0)
   for (let index = 0; index < buckets.length; index += 1) {
     if (seconds <= buckets[index]) {
       values[index] += 1
     }
   }
-  durationBuckets.set(key, values)
+  durationBuckets.set(durationKey, values)
 }
 
 export const renderFrontendMetrics = () => {
@@ -57,7 +66,7 @@ export const renderFrontendMetrics = () => {
   )
 
   for (const [key, values] of durationBuckets) {
-    const baseLabels = labelsFor(key)
+    const baseLabels = durationLabelsFor(key)
     let cumulative = 0
     for (let index = 0; index < buckets.length; index += 1) {
       cumulative += values[index]

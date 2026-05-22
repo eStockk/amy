@@ -4,266 +4,308 @@
   },
   "editable": true,
   "fiscalYearStartMonth": 0,
-  "graphTooltip": 0,
+  "graphTooltip": 1,
   "id": null,
   "links": [],
   "liveNow": false,
   "panels": [
     {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "Prometheus"
-      },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
+          "mappings": [
+            { "options": { "0": { "text": "DOWN" }, "1": { "text": "UP" } }, "type": "value" }
+          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "green",
-                "value": 1
-              }
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
             ]
           },
           "unit": "short"
         },
         "overrides": []
       },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 0,
-        "y": 0
-      },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
       "id": 1,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "expr": "up{job=\"amy-backend\"}",
-          "legendFormat": "Backend"
-        }
-      ],
-      "title": "Backend Up",
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value" },
+      "targets": [{ "expr": "up{job=\"amy-backend\"}", "legendFormat": "Backend" }],
+      "title": "Backend",
       "type": "stat"
     },
     {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "Prometheus"
-      },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
+          "mappings": [
+            { "options": { "0": { "text": "DOWN" }, "1": { "text": "UP" } }, "type": "value" }
+          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "green",
-                "value": 1
-              }
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
             ]
           },
           "unit": "short"
         },
         "overrides": []
       },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 6,
-        "y": 0
-      },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
       "id": 2,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "expr": "up{job=\"amy-frontend\"}",
-          "legendFormat": "Frontend"
-        }
-      ],
-      "title": "Frontend Up",
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value" },
+      "targets": [{ "expr": "up{job=\"amy-frontend\"}", "legendFormat": "Frontend" }],
+      "title": "Frontend",
       "type": "stat"
     },
     {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "Prometheus"
-      },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "fieldConfig": {
         "defaults": {
-          "unit": "reqps"
+          "mappings": [
+            { "options": { "0": { "text": "DOWN" }, "1": { "text": "UP" } }, "type": "value" }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          },
+          "unit": "short"
         },
         "overrides": []
       },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 4
-      },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
       "id": 3,
-      "targets": [
-        {
-          "expr": "sum(rate(amy_backend_http_requests_total[5m]))",
-          "legendFormat": "Backend"
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value" },
+      "targets": [{ "expr": "max(amy_backend_database_up) or max(pg_up{job=\"amy-postgres\"})", "legendFormat": "PostgreSQL" }],
+      "title": "Database",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "text": "NOT CONFIGURED" }, "1": { "text": "CONFIGURED" } }, "type": "value" }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "orange", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          },
+          "unit": "short"
         },
-        {
-          "expr": "sum(rate(amy_frontend_http_requests_total[5m]))",
-          "legendFormat": "Frontend"
-        }
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "id": 4,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value" },
+      "targets": [{ "expr": "amy_backend_discord_oauth_configured", "legendFormat": "OAuth" }],
+      "title": "Discord OAuth",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "text": "DOWN" }, "1": { "text": "UP" } }, "type": "value" }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
+      "id": 5,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value" },
+      "targets": [{ "expr": "probe_success{job=\"amy-external-checks\",instance=\"https://discord.com/api/v10/gateway\"}", "legendFormat": "Discord API" }],
+      "title": "Discord API",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 70 },
+              { "color": "red", "value": 90 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
+      "id": 6,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [{ "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{job=\"amy-node\",mode=\"idle\"}[5m])))", "legendFormat": "CPU" }],
+      "title": "VPS CPU",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "id": 7,
+      "targets": [
+        { "expr": "sum(rate(amy_backend_http_requests_total[5m]))", "legendFormat": "Backend" },
+        { "expr": "sum(rate(amy_frontend_http_requests_total[5m]))", "legendFormat": "Frontend" }
       ],
       "title": "Requests Per Second",
       "type": "timeseries"
     },
     {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "Prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percentunit"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 4
-      },
-      "id": 4,
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "id": 8,
       "targets": [
-        {
-          "expr": "sum(rate(amy_backend_http_requests_total{status=~\"5..\"}[5m])) / clamp_min(sum(rate(amy_backend_http_requests_total[5m])), 1)",
-          "legendFormat": "Backend"
-        },
-        {
-          "expr": "sum(rate(amy_frontend_http_requests_total{status=~\"5..\"}[5m])) / clamp_min(sum(rate(amy_frontend_http_requests_total[5m])), 1)",
-          "legendFormat": "Frontend"
-        }
+        { "expr": "sum(increase(amy_backend_http_requests_total[5m])) by (client_ip)", "legendFormat": "backend {{client_ip}}" },
+        { "expr": "sum(increase(amy_frontend_http_requests_total[5m])) by (client_ip)", "legendFormat": "frontend {{client_ip}}" }
       ],
-      "title": "Error Rate",
+      "title": "Requests By IP Over 5 Minutes",
       "type": "timeseries"
     },
     {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "Prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 12
-      },
-      "id": 5,
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 12 },
+      "id": 9,
       "targets": [
-        {
-          "expr": "histogram_quantile(0.95, sum(rate(amy_backend_http_request_duration_seconds_bucket[5m])) by (le))",
-          "legendFormat": "Backend p95"
-        },
-        {
-          "expr": "histogram_quantile(0.95, sum(rate(amy_frontend_http_request_duration_seconds_bucket[5m])) by (le))",
-          "legendFormat": "Frontend p95"
-        }
+        { "expr": "topk(10, sum(increase(amy_backend_http_requests_total[15m])) by (client_ip))", "legendFormat": "backend {{client_ip}}" },
+        { "expr": "topk(10, sum(increase(amy_frontend_http_requests_total[15m])) by (client_ip))", "legendFormat": "frontend {{client_ip}}" }
       ],
-      "title": "Latency p95",
+      "title": "Top Client IPs Last 15 Minutes",
+      "type": "bargauge"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 12 },
+      "id": 10,
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(amy_backend_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "Backend" },
+        { "expr": "histogram_quantile(0.95, sum(rate(amy_frontend_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "Frontend" }
+      ],
+      "title": "Response Time: 95% Requests Faster Than This",
       "type": "timeseries"
     },
     {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "Prometheus"
-      },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 12 },
+      "id": 11,
+      "targets": [
+        { "expr": "100 * (1 - node_memory_MemAvailable_bytes{job=\"amy-node\"} / node_memory_MemTotal_bytes{job=\"amy-node\"})", "legendFormat": "VPS RAM" },
+        { "expr": "100 * (go_memstats_alloc_bytes{job=\"amy-backend\"} / 805306368)", "legendFormat": "Backend limit" },
+        { "expr": "100 * (amy_frontend_process_resident_memory_bytes{job=\"amy-frontend\"} / 1073741824)", "legendFormat": "Frontend limit" }
+      ],
+      "title": "Memory Usage",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 20 },
+      "id": 12,
+      "targets": [
+        { "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{job=\"amy-node\",mode=\"idle\"}[5m])))", "legendFormat": "CPU total" },
+        { "expr": "100 * avg(rate(node_cpu_seconds_total{job=\"amy-node\",mode=\"iowait\"}[5m]))", "legendFormat": "IO wait" }
+      ],
+      "title": "VPS CPU Load",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 20 },
+      "id": 13,
+      "targets": [
+        { "expr": "pg_stat_database_numbackends{job=\"amy-postgres\",datname=\"amy\"}", "legendFormat": "Connections" },
+        { "expr": "rate(pg_stat_database_xact_commit{job=\"amy-postgres\",datname=\"amy\"}[5m])", "legendFormat": "Commits/sec" },
+        { "expr": "rate(pg_stat_database_xact_rollback{job=\"amy-postgres\",datname=\"amy\"}[5m])", "legendFormat": "Rollbacks/sec" }
+      ],
+      "title": "PostgreSQL Activity",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 20 },
+      "id": 14,
+      "targets": [
+        { "expr": "sum(increase(amy_backend_discord_outbound_requests_total[30m])) by (kind,result)", "legendFormat": "{{kind}} {{result}}" }
+      ],
+      "title": "Discord Sends And Fetches Last 30 Minutes",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "fieldConfig": {
         "defaults": {
-          "unit": "bytes"
+          "mappings": [
+            { "options": { "0": { "text": "MISSING" }, "1": { "text": "CONFIGURED" } }, "type": "value" }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "orange", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          },
+          "unit": "short"
         },
         "overrides": []
       },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 12
-      },
-      "id": 6,
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 28 },
+      "id": 15,
       "targets": [
-        {
-          "expr": "go_memstats_alloc_bytes{job=\"amy-backend\"}",
-          "legendFormat": "Backend Go alloc"
-        },
-        {
-          "expr": "amy_frontend_nodejs_heap_size_used_bytes{job=\"amy-frontend\"}",
-          "legendFormat": "Frontend heap"
-        }
+        { "expr": "amy_backend_discord_integration_configured", "legendFormat": "{{kind}}" }
       ],
-      "title": "Memory",
-      "type": "timeseries"
+      "title": "Discord Integrations Config",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "dateTimeFromNow" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 28 },
+      "id": 16,
+      "targets": [
+        { "expr": "amy_backend_discord_outbound_last_success_timestamp_seconds", "legendFormat": "{{kind}}" }
+      ],
+      "title": "Last Successful Discord Operation",
+      "type": "stat"
     }
   ],
   "refresh": "10s",
   "schemaVersion": 39,
-  "tags": [
-    "amy"
-  ],
+  "tags": ["amy"],
   "templating": {
     "list": []
   },
   "time": {
-    "from": "now-30m",
+    "from": "now-1h",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "browser",
   "title": "Amy Overview",
   "uid": "amy-overview",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

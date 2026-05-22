@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"amy/minecraft-server/internal/models"
+	"amy/minecraft-server/internal/observability"
 )
 
 type NewsHandler struct {
@@ -148,11 +149,14 @@ func (h *NewsHandler) fetchTelegramNews(ctx context.Context, limit int64) ([]mod
 	}
 	req.Header.Set("User-Agent", "amy-world-news/1.0")
 
+	startedAt := time.Now()
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
+		observability.ObserveDiscordOutbound("news_fetch", startedAt, 0, err)
 		return nil, err
 	}
 	defer resp.Body.Close()
+	observability.ObserveDiscordOutbound("news_fetch", startedAt, resp.StatusCode, nil)
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return nil, errUnexpectedStatus(resp.StatusCode)

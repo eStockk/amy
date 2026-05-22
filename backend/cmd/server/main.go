@@ -13,37 +13,9 @@ import (
 	"amy/minecraft-server/internal/config"
 	"amy/minecraft-server/internal/db"
 	"amy/minecraft-server/internal/handlers"
-	"github.com/prometheus/client_golang/prometheus"
+	"amy/minecraft-server/internal/observability"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
-
-var (
-	httpRequestsTotal = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "amy_backend_http_requests_total",
-			Help: "Total backend HTTP requests.",
-		},
-		[]string{"method", "path", "status"},
-	)
-	httpRequestDuration = prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "amy_backend_http_request_duration_seconds",
-			Help:    "Backend HTTP request duration.",
-			Buckets: prometheus.DefBuckets,
-		},
-		[]string{"method", "path", "status"},
-	)
-	httpRequestsInFlight = prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "amy_backend_http_requests_in_flight",
-			Help: "Backend HTTP requests currently in flight.",
-		},
-	)
-)
-
-func init() {
-	prometheus.MustRegister(httpRequestsTotal, httpRequestDuration, httpRequestsInFlight)
-}
 
 func main() {
 	cfg := config.Load()
@@ -63,6 +35,16 @@ func main() {
 		log.Fatalf("failed to migrate postgres: %v", err)
 	}
 	migrationCancel()
+	observability.RegisterDatabaseUp(postgres)
+	observability.SetDiscordConfig(
+		cfg.DiscordClientID != "" && cfg.DiscordClientSecret != "" && cfg.DiscordRedirectURL != "",
+		map[string]bool{
+			"oauth":          cfg.DiscordClientID != "" && cfg.DiscordClientSecret != "" && cfg.DiscordRedirectURL != "",
+			"rp_application": cfg.DiscordRPWebhook != "",
+			"support_ticket": cfg.DiscordTicketWebhook != "",
+			"news_fetch":     cfg.DiscordBotToken != "" && cfg.DiscordNewsChannelID != "",
+		},
+	)
 
 	healthHandler := handlers.NewHealthHandler(postgres)
 	playerHandler := handlers.NewPlayerHandler(postgres)
@@ -155,16 +137,16 @@ func withMetrics(next http.Handler) http.Handler {
 		}
 
 		start := time.Now()
-		httpRequestsInFlight.Inc()
-		defer httpRequestsInFlight.Dec()
+		observability.HTTPRequestsInFlight.Inc()
+		defer observability.HTTPRequestsInFlight.Dec()
 
 		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(recorder, r)
 
 		status := strconv.Itoa(recorder.status)
 		route := r.URL.Path
-		httpRequestsTotal.WithLabelValues(r.Method, route, status).Inc()
-		httpRequestDuration.WithLabelValues(r.Method, route, status).Observe(time.Since(start).Seconds())
+		observability.HTTPRequestsTotal.WithLabelValues(r.Method, route, status, observability.ClientIP(r)).Inc()
+		observability.HTTPRequestDuration.WithLabelValues(r.Method, route, status).Observe(time.Since(start).Seconds())
 	})
 }
 

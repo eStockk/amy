@@ -15,6 +15,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"amy/minecraft-server/internal/observability"
 )
 
 type rpApplicationDoc struct {
@@ -434,11 +436,14 @@ func (h *DiscordAuthHandler) sendRPApplicationWebhook(doc rpApplicationDoc, user
 	}
 	req.Header.Set("Content-Type", "application/json")
 
+	startedAt := time.Now()
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
+		observability.ObserveDiscordOutbound("rp_application", startedAt, 0, err)
 		return "", err
 	}
 	defer resp.Body.Close()
+	observability.ObserveDiscordOutbound("rp_application", startedAt, resp.StatusCode, nil)
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		bodyRaw, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
@@ -473,11 +478,14 @@ func (h *DiscordAuthHandler) deleteRPApplicationDiscordMessage(messageID string)
 		return err
 	}
 
+	startedAt := time.Now()
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
+		observability.ObserveDiscordOutbound("rp_application_delete", startedAt, 0, err)
 		return err
 	}
 	defer resp.Body.Close()
+	observability.ObserveDiscordOutbound("rp_application_delete", startedAt, resp.StatusCode, nil)
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil
@@ -711,11 +719,14 @@ func (h *DiscordAuthHandler) updateRPApplicationDiscordMessage(app rpApplication
 	}
 	req.Header.Set("Content-Type", "application/json")
 
+	startedAt := time.Now()
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
+		observability.ObserveDiscordOutbound("rp_moderation_update", startedAt, 0, err)
 		return err
 	}
 	defer resp.Body.Close()
+	observability.ObserveDiscordOutbound("rp_moderation_update", startedAt, resp.StatusCode, nil)
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil

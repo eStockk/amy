@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"amy/minecraft-server/internal/observability"
 )
 
 type DiscordAuthHandler struct {
@@ -172,12 +174,15 @@ func (h *DiscordAuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	form.Set("code", code)
 	form.Set("redirect_uri", h.redirectURL)
 
+	startedAt := time.Now()
 	resp, err := http.PostForm("https://discord.com/api/oauth2/token", form)
 	if err != nil {
+		observability.ObserveDiscordOutbound("oauth_token", startedAt, 0, err)
 		writeError(w, http.StatusBadGateway, "discord token exchange failed")
 		return
 	}
 	defer resp.Body.Close()
+	observability.ObserveDiscordOutbound("oauth_token", startedAt, resp.StatusCode, nil)
 
 	var token discordTokenResponse
 	if err := json.NewDecoder(resp.Body).Decode(&token); err != nil {
@@ -192,12 +197,15 @@ func (h *DiscordAuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	userReq, _ := http.NewRequest(http.MethodGet, "https://discord.com/api/users/@me", nil)
 	userReq.Header.Set("Authorization", "Bearer "+token.AccessToken)
 
+	startedAt = time.Now()
 	userResp, err := http.DefaultClient.Do(userReq)
 	if err != nil {
+		observability.ObserveDiscordOutbound("oauth_user", startedAt, 0, err)
 		writeError(w, http.StatusBadGateway, "discord user fetch failed")
 		return
 	}
 	defer userResp.Body.Close()
+	observability.ObserveDiscordOutbound("oauth_user", startedAt, userResp.StatusCode, nil)
 
 	var user discordUser
 	if err := json.NewDecoder(userResp.Body).Decode(&user); err != nil {

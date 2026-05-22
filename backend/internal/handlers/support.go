@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"amy/minecraft-server/internal/models"
+	"amy/minecraft-server/internal/observability"
 )
 
 type SupportHandler struct {
@@ -118,5 +119,12 @@ func (h *SupportHandler) sendDiscordWebhook(payload ticketRequest) {
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
-	_, _ = http.DefaultClient.Do(req)
+	startedAt := time.Now()
+	resp, err := http.DefaultClient.Do(req)
+	statusCode := 0
+	if resp != nil {
+		statusCode = resp.StatusCode
+		_ = resp.Body.Close()
+	}
+	observability.ObserveDiscordOutbound("support_ticket", startedAt, statusCode, err)
 }
