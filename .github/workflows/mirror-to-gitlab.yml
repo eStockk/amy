@@ -29,5 +29,5 @@ jobs:
           test -n "$GITLAB_PROJECT_PATH"
           test -n "$GITLAB_TOKEN"
           git remote add gitlab "https://oauth2:${GITLAB_TOKEN}@gitlab.com/${GITLAB_PROJECT_PATH}.git"
-          git push gitlab HEAD:main --force
-          git push gitlab --tags --force
+          git push gitlab HEAD:main
+          git push gitlab --tags
