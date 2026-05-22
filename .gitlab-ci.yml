@@ -49,6 +49,8 @@ compose:config:
 deploy:production:
   stage: deploy
   image: docker:27-cli
+  tags:
+    - amy-vps-docker
   needs:
     - backend:test
     - frontend:build
