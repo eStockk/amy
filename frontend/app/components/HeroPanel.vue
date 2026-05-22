@@ -18,7 +18,7 @@
       </div>
       <div class="actions">
         <button class="primary" type="button" @click="startApplication">Подать заявку</button>
-        <button class="ghost" type="button">Трейлер</button>
+        <button class="ghost" type="button">Промо</button>
       </div>
     </div>
     <div class="hero-media">
