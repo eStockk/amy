@@ -18,15 +18,15 @@ services:
       - -c
       - max_connections=80
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-amy}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-amy}
+      POSTGRES_USER: ${POSTGRES_USER:-amy_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
       POSTGRES_DB: ${POSTGRES_DB:-amy}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-amy} -d ${POSTGRES_DB:-amy}"]
+      test: ["CMD-SHELL", "pg_isready -U '${POSTGRES_USER:-amy_user}' -d '${POSTGRES_DB:-amy}'"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -44,7 +44,7 @@ services:
       PORT: 8080
       GOMEMLIMIT: 640MiB
       GOGC: 100
-      DATABASE_URL: postgres://${POSTGRES_USER:-amy}:${POSTGRES_PASSWORD:-amy}@postgres:5432/${POSTGRES_DB:-amy}?sslmode=disable
+      DATABASE_URL: ${DATABASE_URL:-postgres://amy_user:change_me@postgres:5432/amy?sslmode=disable}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
       DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
@@ -100,8 +100,8 @@ services:
     mem_limit: 512m
     mem_reservation: 256m
     environment:
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-Kekirgjn30}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-JFNA331--~}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-change_me}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_DATABASE_WAL: "true"
     volumes:

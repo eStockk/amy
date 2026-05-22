@@ -2,11 +2,11 @@
 
 ## 1. Prepare the server
 
-Install Docker, Docker Compose plugin, Git, and OpenSSH client.
+Install Docker, Docker Compose, Git, and OpenSSH client.
 
 ```bash
 sudo apt update
-sudo apt install -y git docker.io docker-compose-plugin openssh-client
+sudo apt install -y git docker.io docker-compose openssh-client
 sudo usermod -aG docker "$USER"
 ```
 
@@ -50,19 +50,17 @@ Set production values for:
 - `NUXT_PUBLIC_API_BASE`
 - Discord OAuth and webhook variables
 - `MINECRAFT_SERVER_TOKEN`
-- PostgreSQL password if you do not want the default
-- Grafana credentials if they should differ from the repository defaults
-
-Current default Grafana credentials:
-
-- login: `Kekirgjn30`
-- password: `JFNA331--~`
+- `POSTGRES_USER`
+- `POSTGRES_PASSWORD`
+- `DATABASE_URL`
+- `GRAFANA_ADMIN_USER`
+- `GRAFANA_ADMIN_PASSWORD`
 
 ## 5. Build and start
 
 ```bash
-docker compose -f docker-compose.yml up -d --build
-docker compose -f docker-compose.yml ps
+docker-compose -f docker-compose.yml up -d --build
+docker-compose -f docker-compose.yml ps
 ```
 
 ## 6. Update from GitHub
@@ -70,16 +68,16 @@ docker compose -f docker-compose.yml ps
 ```bash
 cd /opt/amy/app
 GIT_SSH_COMMAND='ssh -i ~/.ssh/amy_deploy -o IdentitiesOnly=yes' git pull --ff-only
-docker compose -f docker-compose.yml up -d --build
+docker-compose -f docker-compose.yml up -d --build
 docker image prune -f
 ```
 
 ## 7. Useful checks
 
 ```bash
-docker compose -f docker-compose.yml logs --tail=100 backend
-docker compose -f docker-compose.yml logs --tail=100 frontend
-docker compose -f docker-compose.yml exec postgres psql -U amy -d amy -c '\dt'
+docker-compose -f docker-compose.yml logs --tail=100 backend
+docker-compose -f docker-compose.yml logs --tail=100 frontend
+docker-compose -f docker-compose.yml exec postgres psql -U "$POSTGRES_USER" -d amy -c '\dt'
 ```
 
 Open:

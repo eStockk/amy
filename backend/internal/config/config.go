@@ -22,7 +22,7 @@ type Config struct {
 func Load() Config {
 	return Config{
 		Port:                 getEnv("PORT", "8080"),
-		DatabaseURL:          getEnv("DATABASE_URL", "postgres://amy:amy@localhost:5432/amy?sslmode=disable"),
+		DatabaseURL:          getEnv("DATABASE_URL", "postgres://amy_user:change_me@localhost:5432/amy?sslmode=disable"),
 		FrontendURL:          getEnv("FRONTEND_URL", "http://localhost:3000"),
 		DiscordClientID:      getEnv("DISCORD_CLIENT_ID", ""),
 		DiscordClientSecret:  getEnv("DISCORD_CLIENT_SECRET", ""),

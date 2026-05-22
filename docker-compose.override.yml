@@ -10,7 +10,7 @@ services:
       - ./backend:/src
       - go-cache:/go/pkg/mod
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-amy}:${POSTGRES_PASSWORD:-amy}@postgres:5432/${POSTGRES_DB:-amy}?sslmode=disable
+      DATABASE_URL: ${DATABASE_URL:-postgres://amy_user:change_me@postgres:5432/amy?sslmode=disable}
 
   frontend:
     build:
