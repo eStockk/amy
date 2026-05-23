@@ -96,11 +96,15 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 			category TEXT NOT NULL DEFAULT '',
 			message TEXT NOT NULL,
 			status TEXT NOT NULL DEFAULT 'open',
+			moderation_token TEXT NOT NULL DEFAULT '',
+			discord_message_id TEXT NOT NULL DEFAULT '',
 			resolved_at TIMESTAMPTZ,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
 		`ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS discord_nick TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'open'`,
+		`ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS moderation_token TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS discord_message_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ`,
 		`CREATE INDEX IF NOT EXISTS support_tickets_status_created_at_idx ON support_tickets(status, created_at DESC)`,
 		`CREATE TABLE IF NOT EXISTS players (

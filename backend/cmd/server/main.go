@@ -51,7 +51,7 @@ func main() {
 	newsHandler := handlers.NewNewsHandler(postgres, cfg.TelegramNewsChannel, cfg.DiscordBotToken, cfg.DiscordNewsChannelID)
 	discordMemberSync := handlers.NewDiscordMemberSync(postgres, cfg.DiscordBotToken, cfg.DiscordGuildID)
 	serverStatusHandler := handlers.NewServerStatusHandler(cfg.MinecraftServerAddr)
-	supportHandler := handlers.NewSupportHandler(postgres, cfg.DiscordTicketWebhook)
+	supportHandler := handlers.NewSupportHandler(postgres, cfg.DiscordTicketWebhook, cfg.FrontendURL)
 	discordHandler := handlers.NewDiscordAuthHandler(
 		postgres,
 		cfg.DiscordClientID,
@@ -91,6 +91,7 @@ func main() {
 	mux.HandleFunc("/api/minecraft/verification-code", discordHandler.RequestMinecraftVerificationCode)
 	mux.HandleFunc("/api/minecraft/rp-name", discordHandler.UpdateMineRPName)
 	mux.HandleFunc("/api/support/tickets", supportHandler.Create)
+	mux.HandleFunc("/api/support/tickets/", supportHandler.Moderate)
 
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
