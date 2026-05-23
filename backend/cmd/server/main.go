@@ -60,7 +60,10 @@ func main() {
 		cfg.DiscordTicketWebhook,
 		cfg.DiscordRPWebhook,
 		cfg.RPModeratorIDs,
+		cfg.DiscordBotToken,
+		cfg.DiscordGuildID,
 		cfg.MinecraftServerToken,
+		cfg.MinecraftServerAddr,
 	)
 
 	syncCtx, syncCancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -88,6 +91,8 @@ func main() {
 	mux.HandleFunc("/api/minecraft/verification-code", discordHandler.RequestMinecraftVerificationCode)
 	mux.HandleFunc("/api/minecraft/rp-name", discordHandler.UpdateMineRPName)
 	mux.HandleFunc("/api/support/tickets", supportHandler.Create)
+	mux.HandleFunc("/api/dashboard", discordHandler.Dashboard)
+	mux.HandleFunc("/api/dashboard/support/tickets/", discordHandler.UpdateSupportTicket)
 
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -157,7 +162,7 @@ func withCORS(allowedOrigin string, next http.Handler) http.Handler {
 		}
 		w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
-		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PATCH,OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type,X-Server-Token")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

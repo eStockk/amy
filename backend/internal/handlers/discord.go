@@ -24,7 +24,10 @@ type DiscordAuthHandler struct {
 	ticketWebhookURL     string
 	rpWebhookURL         string
 	rpModeratorIDs       map[string]struct{}
+	discordBotToken      string
+	discordGuildID       string
 	minecraftServerToken string
+	minecraftServerAddr  string
 }
 
 type discordTokenResponse struct {
@@ -124,7 +127,10 @@ func NewDiscordAuthHandler(
 	ticketWebhookURL,
 	rpWebhookURL,
 	rpModeratorIDsRaw,
-	minecraftServerToken string,
+	discordBotToken,
+	discordGuildID,
+	minecraftServerToken,
+	minecraftServerAddr string,
 ) *DiscordAuthHandler {
 	return &DiscordAuthHandler{
 		db:                   db,
@@ -135,7 +141,10 @@ func NewDiscordAuthHandler(
 		ticketWebhookURL:     ticketWebhookURL,
 		rpWebhookURL:         rpWebhookURL,
 		rpModeratorIDs:       parseDiscordIDSet(rpModeratorIDsRaw),
+		discordBotToken:      discordBotToken,
+		discordGuildID:       discordGuildID,
 		minecraftServerToken: minecraftServerToken,
+		minecraftServerAddr:  minecraftServerAddr,
 	}
 }
 

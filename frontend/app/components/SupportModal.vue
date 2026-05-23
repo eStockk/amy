@@ -12,8 +12,8 @@
             <input v-model="name" type="text" required />
           </label>
           <label>
-            Email *
-            <input v-model="email" type="email" required />
+            Discord ник *
+            <input v-model="discordNick" type="text" placeholder="username или display name" required />
           </label>
           <label>
             Тема *
@@ -45,7 +45,7 @@ const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 const name = ref('')
-const email = ref('')
+const discordNick = ref('')
 const subject = ref('')
 const category = ref('Общие вопросы')
 const message = ref('')
@@ -61,7 +61,7 @@ const submit = async () => {
       method: 'POST',
       body: {
         name: name.value,
-        email: email.value,
+        discordNick: discordNick.value,
         subject: subject.value,
         category: category.value,
         message: message.value
@@ -69,7 +69,7 @@ const submit = async () => {
     })
     status.value = 'Тикет отправлен. Мы свяжемся с вами.'
     name.value = ''
-    email.value = ''
+    discordNick.value = ''
     subject.value = ''
     message.value = ''
   } catch {

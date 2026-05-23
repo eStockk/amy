@@ -28,8 +28,14 @@ type serverStatusResponse struct {
 }
 
 type serverStatusPlayers struct {
-	Online int `json:"online"`
-	Max    int `json:"max"`
+	Online int                     `json:"online"`
+	Max    int                     `json:"max"`
+	Sample []minecraftPlayerSample `json:"sample,omitempty"`
+}
+
+type minecraftPlayerSample struct {
+	Name string `json:"name"`
+	ID   string `json:"id,omitempty"`
 }
 
 type minecraftStatusPayload struct {
@@ -37,8 +43,9 @@ type minecraftStatusPayload struct {
 		Name string `json:"name"`
 	} `json:"version"`
 	Players struct {
-		Max    int `json:"max"`
-		Online int `json:"online"`
+		Max    int                     `json:"max"`
+		Online int                     `json:"online"`
+		Sample []minecraftPlayerSample `json:"sample"`
 	} `json:"players"`
 }
 
@@ -138,6 +145,7 @@ func queryMinecraftStatus(ctx context.Context, rawAddress string) (serverStatusR
 		Players: serverStatusPlayers{
 			Online: payload.Players.Online,
 			Max:    payload.Players.Max,
+			Sample: payload.Players.Sample,
 		},
 	}, nil
 }

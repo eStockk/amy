@@ -19,11 +19,12 @@ type SupportHandler struct {
 }
 
 type ticketRequest struct {
-	Name     string `json:"name"`
-	Email    string `json:"email"`
-	Subject  string `json:"subject"`
-	Category string `json:"category"`
-	Message  string `json:"message"`
+	Name        string `json:"name"`
+	Email       string `json:"email"`
+	DiscordNick string `json:"discordNick"`
+	Subject     string `json:"subject"`
+	Category    string `json:"category"`
+	Message     string `json:"message"`
 }
 
 func NewSupportHandler(db *sql.DB, webhookURL string) *SupportHandler {
@@ -47,12 +48,13 @@ func (h *SupportHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	payload.Name = strings.TrimSpace(payload.Name)
 	payload.Email = strings.TrimSpace(strings.ToLower(payload.Email))
+	payload.DiscordNick = strings.TrimSpace(payload.DiscordNick)
 	payload.Subject = strings.TrimSpace(payload.Subject)
 	payload.Category = strings.TrimSpace(payload.Category)
 	payload.Message = strings.TrimSpace(payload.Message)
 
-	if payload.Name == "" || payload.Email == "" || payload.Subject == "" || payload.Message == "" {
-		writeError(w, http.StatusBadRequest, "name, email, subject, message required")
+	if payload.Name == "" || payload.DiscordNick == "" || payload.Subject == "" || payload.Message == "" {
+		writeError(w, http.StatusBadRequest, "name, discordNick, subject, message required")
 		return
 	}
 
@@ -60,24 +62,28 @@ func (h *SupportHandler) Create(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	ticket := models.Ticket{
-		Name:      payload.Name,
-		Email:     payload.Email,
-		Subject:   payload.Subject,
-		Category:  payload.Category,
-		Message:   payload.Message,
-		CreatedAt: time.Now().UTC(),
+		Name:        payload.Name,
+		Email:       payload.Email,
+		DiscordNick: payload.DiscordNick,
+		Subject:     payload.Subject,
+		Category:    payload.Category,
+		Message:     payload.Message,
+		Status:      "open",
+		CreatedAt:   time.Now().UTC(),
 	}
 
 	err := h.db.QueryRowContext(
 		ctx,
-		`INSERT INTO support_tickets (name, email, subject, category, message, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6)
+		`INSERT INTO support_tickets (name, email, discord_nick, subject, category, message, status, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          RETURNING id`,
 		ticket.Name,
 		ticket.Email,
+		ticket.DiscordNick,
 		ticket.Subject,
 		ticket.Category,
 		ticket.Message,
+		ticket.Status,
 		ticket.CreatedAt,
 	).Scan(&ticket.ID)
 	if err != nil {
@@ -98,7 +104,7 @@ func (h *SupportHandler) sendDiscordWebhook(payload ticketRequest) {
 		"title": payload.Subject,
 		"fields": []map[string]string{
 			{"name": "Name", "value": payload.Name},
-			{"name": "Email", "value": payload.Email},
+			{"name": "Discord", "value": payload.DiscordNick},
 			{"name": "Category", "value": payload.Category},
 			{"name": "Message", "value": payload.Message},
 		},

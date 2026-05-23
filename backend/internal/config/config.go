@@ -12,6 +12,7 @@ type Config struct {
 	DiscordTicketWebhook string
 	DiscordRPWebhook     string
 	RPModeratorIDs       string
+	DiscordGuildID       string
 	MinecraftServerToken string
 	MinecraftServerAddr  string
 	TelegramNewsChannel  string
@@ -30,6 +31,7 @@ func Load() Config {
 		DiscordTicketWebhook: getEnv("DISCORD_TICKET_WEBHOOK", ""),
 		DiscordRPWebhook:     getEnv("DISCORD_RP_WEBHOOK", ""),
 		RPModeratorIDs:       getEnv("DISCORD_RP_MODERATOR_IDS", ""),
+		DiscordGuildID:       getEnv("DISCORD_GUILD_ID", ""),
 		MinecraftServerToken: getEnv("MINECRAFT_SERVER_TOKEN", ""),
 		MinecraftServerAddr:  getEnv("MINECRAFT_SERVER_ADDRESS", "play.amy-world.ru"),
 		TelegramNewsChannel:  getEnv("TELEGRAM_NEWS_CHANNEL", ""),

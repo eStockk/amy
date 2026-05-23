@@ -91,11 +91,18 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 			id BIGSERIAL PRIMARY KEY,
 			name TEXT NOT NULL,
 			email TEXT NOT NULL,
+			discord_nick TEXT NOT NULL DEFAULT '',
 			subject TEXT NOT NULL,
 			category TEXT NOT NULL DEFAULT '',
 			message TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'open',
+			resolved_at TIMESTAMPTZ,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
+		`ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS discord_nick TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'open'`,
+		`ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ`,
+		`CREATE INDEX IF NOT EXISTS support_tickets_status_created_at_idx ON support_tickets(status, created_at DESC)`,
 		`CREATE TABLE IF NOT EXISTS players (
 			id BIGSERIAL PRIMARY KEY,
 			name TEXT NOT NULL,

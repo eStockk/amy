@@ -15,11 +15,13 @@ type News struct {
 
 // Ticket represents a support request.
 type Ticket struct {
-	ID        int64     `json:"id"`
-	Name      string    `json:"name"`
-	Email     string    `json:"email"`
-	Subject   string    `json:"subject"`
-	Category  string    `json:"category"`
-	Message   string    `json:"message"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID          int64     `json:"id"`
+	Name        string    `json:"name"`
+	Email       string    `json:"email"`
+	DiscordNick string    `json:"discordNick"`
+	Subject     string    `json:"subject"`
+	Category    string    `json:"category"`
+	Message     string    `json:"message"`
+	Status      string    `json:"status"`
+	CreatedAt   time.Time `json:"createdAt"`
 }
