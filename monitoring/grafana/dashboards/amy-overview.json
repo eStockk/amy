@@ -346,7 +346,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 28 },
       "id": 16,
       "targets": [
-        { "expr": "amy_backend_discord_outbound_last_success_timestamp_seconds", "legendFormat": "{{kind}}" }
+        { "expr": "amy_backend_discord_outbound_last_success_timestamp_seconds * 1000", "legendFormat": "{{kind}}" }
       ],
       "title": "Last Successful Discord Operation",
       "type": "stat"
