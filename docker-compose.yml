@@ -163,8 +163,9 @@ services:
     depends_on:
       - prometheus
 
-  caddy:
-    image: caddy:2.8-alpine
+  nginx:
+    build:
+      context: ./monitoring/nginx
     restart: unless-stopped
     logging: *default-logging
     mem_limit: 256m
@@ -172,21 +173,38 @@ services:
     environment:
       APP_DOMAIN: ${APP_DOMAIN:-localhost}
       APP_WWW_DOMAIN: ${APP_WWW_DOMAIN:-www.localhost}
-      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL:-admin@example.com}
+      APP_IP: ${APP_IP:-5.83.140.117}
     ports:
       - "${HTTP_PORT:-80}:80"
       - "${HTTPS_PORT:-443}:443"
     volumes:
-      - ./monitoring/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
+      - letsencrypt-data:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
     depends_on:
       - backend
       - frontend
+
+  certbot:
+    image: certbot/certbot:v2.11.0
+    restart: unless-stopped
+    logging: *default-logging
+    mem_limit: 128m
+    mem_reservation: 64m
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:-localhost}
+      APP_WWW_DOMAIN: ${APP_WWW_DOMAIN:-www.localhost}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL:-admin@example.com}
+    volumes:
+      - letsencrypt-data:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+      - ./monitoring/certbot/start-certbot.sh:/usr/local/bin/start-certbot:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/start-certbot"]
+    depends_on:
+      - nginx
 
 volumes:
   postgres-data: {}
   prometheus-data: {}
   grafana-data: {}
-  caddy-data: {}
-  caddy-config: {}
+  letsencrypt-data: {}
+  certbot-www: {}
