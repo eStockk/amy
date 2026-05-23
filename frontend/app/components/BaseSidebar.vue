@@ -48,10 +48,6 @@
           <span class="icon">D</span>
           <span class="label">Документация</span>
         </NuxtLink>
-        <NuxtLink v-if="authenticated" class="nav-link" to="/dashboard" @click="close">
-          <span class="icon">DB</span>
-          <span class="label">Dashboard</span>
-        </NuxtLink>
       </nav>
 
       <div class="sidebar-footer">

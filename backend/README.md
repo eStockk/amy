@@ -16,7 +16,6 @@ Copy `.env.example` to `.env` and set values:
 - `DISCORD_TICKET_WEBHOOK` - webhook for support tickets
 - `DISCORD_RP_WEBHOOK` - webhook for RP applications moderation channel
 - `DISCORD_RP_MODERATOR_IDS` - comma-separated Discord IDs allowed to moderate RP applications
-- `DISCORD_GUILD_ID` - Discord server ID for loading member roles in the dashboard
 - `MINECRAFT_SERVER_TOKEN` - shared secret for Minecraft server <-> website API
 
 ## Run

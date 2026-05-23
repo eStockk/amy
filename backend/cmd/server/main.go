@@ -60,8 +60,6 @@ func main() {
 		cfg.DiscordTicketWebhook,
 		cfg.DiscordRPWebhook,
 		cfg.RPModeratorIDs,
-		cfg.DiscordBotToken,
-		cfg.DiscordGuildID,
 		cfg.MinecraftServerToken,
 		cfg.MinecraftServerAddr,
 	)
@@ -91,8 +89,6 @@ func main() {
 	mux.HandleFunc("/api/minecraft/verification-code", discordHandler.RequestMinecraftVerificationCode)
 	mux.HandleFunc("/api/minecraft/rp-name", discordHandler.UpdateMineRPName)
 	mux.HandleFunc("/api/support/tickets", supportHandler.Create)
-	mux.HandleFunc("/api/dashboard", discordHandler.Dashboard)
-	mux.HandleFunc("/api/dashboard/support/tickets/", discordHandler.UpdateSupportTicket)
 
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,

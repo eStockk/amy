@@ -1,0 +1,382 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "datasource": { "type": "postgres", "uid": "AmyPostgres" },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "panels": [],
+      "title": "Игроки",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "AmyPostgres" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "id": 2,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "AmyPostgres" },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT NOW() AS time, COUNT(*)::int AS value FROM discord_users",
+          "refId": "A"
+        }
+      ],
+      "title": "Всего игроков",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "AmyPostgres" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "id": 3,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "AmyPostgres" },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT NOW() AS time, COUNT(*)::int AS value FROM discord_users WHERE presence_active = TRUE AND last_seen_at > NOW() - INTERVAL '75 seconds'",
+          "refId": "A"
+        }
+      ],
+      "title": "Онлайн на сайте",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "AmyPostgres" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "inspect": false
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 5 },
+      "id": 4,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "AmyPostgres" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH latest_rp AS (SELECT DISTINCT ON (discord_id) discord_id, nickname, status, created_at FROM rp_applications ORDER BY discord_id, created_at DESC), ticket_counts AS (SELECT LOWER(discord_nick) AS discord_nick, COUNT(*) AS tickets_total, COUNT(*) FILTER (WHERE status <> 'resolved') AS tickets_open FROM support_tickets WHERE discord_nick <> '' GROUP BY LOWER(discord_nick)) SELECT COALESCE(NULLIF(u.global_name, ''), u.username) AS \"Discord\", COALESCE(NULLIF(u.linked_minecraft, ''), latest_rp.nickname, '-') AS \"Minecraft\", CASE WHEN u.presence_active = TRUE AND u.last_seen_at > NOW() - INTERVAL '75 seconds' THEN 'online' ELSE 'offline' END AS \"Сайт\", 'unknown' AS \"Minecraft online\", 'unknown' AS \"Discord online\", COALESCE(ticket_counts.tickets_total, 0) AS \"Тикетов\", COALESCE(ticket_counts.tickets_open, 0) AS \"Нерешённых\", COALESCE(latest_rp.status, 'missing') AS \"RP статус\", 'requires bot sync' AS \"Discord роли\" FROM discord_users u LEFT JOIN latest_rp ON latest_rp.discord_id = u.discord_id LEFT JOIN ticket_counts ON ticket_counts.discord_nick IN (LOWER(u.username), LOWER(u.global_name)) ORDER BY u.updated_at DESC LIMIT 200",
+          "refId": "A"
+        }
+      ],
+      "title": "Игроки: Discord, Minecraft, статусы, тикеты, RP",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "datasource": { "type": "postgres", "uid": "AmyPostgres" },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 },
+      "id": 5,
+      "panels": [],
+      "title": "Тикеты техподдержки",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "AmyPostgres" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 16 },
+      "id": 6,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "AmyPostgres" },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT NOW() AS time, COUNT(*)::int AS value FROM support_tickets",
+          "refId": "A"
+        }
+      ],
+      "title": "Всего тикетов",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "AmyPostgres" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 16 },
+      "id": 7,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "AmyPostgres" },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT NOW() AS time, COUNT(*)::int AS value FROM support_tickets WHERE status <> 'resolved'",
+          "refId": "A"
+        }
+      ],
+      "title": "Нерешённых",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "AmyPostgres" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "inspect": false
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 20 },
+      "id": 8,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "AmyPostgres" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT id AS \"ID\", subject AS \"Оглавление\", discord_nick AS \"Discord ник\", category AS \"Категория\", status AS \"Статус\", created_at AS \"Дата публикации\", resolved_at AS \"Дата решения\" FROM support_tickets WHERE ('$ticket_status' = 'all' OR ('$ticket_status' = 'open' AND status <> 'resolved') OR ('$ticket_status' = 'resolved' AND status = 'resolved')) ORDER BY created_at DESC LIMIT 200",
+          "refId": "A"
+        }
+      ],
+      "title": "Тикеты: оглавление, статус, дата",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "datasource": { "type": "postgres", "uid": "AmyPostgres" },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 30 },
+      "id": 9,
+      "panels": [],
+      "title": "RP-заявки",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "AmyPostgres" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 31 },
+      "id": 10,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "AmyPostgres" },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT NOW() AS time, COUNT(*)::int AS value FROM rp_applications",
+          "refId": "A"
+        }
+      ],
+      "title": "Всего RP-заявок",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "AmyPostgres" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 31 },
+      "id": 11,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "AmyPostgres" },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT NOW() AS time, COUNT(*)::int AS value FROM rp_applications WHERE status IN ('accepted', 'approved')",
+          "refId": "A"
+        }
+      ],
+      "title": "Принятых",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "AmyPostgres" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "inspect": false
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 35 },
+      "id": 12,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "AmyPostgres" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT a.nickname AS \"Minecraft ник\", COALESCE(NULLIF(u.global_name, ''), u.username, a.discord_id) AS \"Discord\", a.created_at AS \"Дата публикации\", a.status AS \"Статус\", CASE WHEN COALESCE(u.presence_active, FALSE) = TRUE AND u.last_seen_at > NOW() - INTERVAL '75 seconds' THEN 'online' ELSE 'offline' END AS \"Онлайн на сайте\", 'unknown' AS \"Онлайн в Discord\" FROM rp_applications a LEFT JOIN discord_users u ON u.discord_id = a.discord_id WHERE ('$rp_status' = 'all' OR ('$rp_status' = 'accepted' AND a.status IN ('accepted', 'approved')) OR ('$rp_status' = 'other' AND a.status NOT IN ('accepted', 'approved'))) ORDER BY a.created_at DESC LIMIT 200",
+          "refId": "A"
+        }
+      ],
+      "title": "RP-заявки: игрок, дата, статус, онлайн",
+      "type": "table"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["amy", "community"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": true, "text": "Все", "value": "all" },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Тикеты",
+        "multi": false,
+        "name": "ticket_status",
+        "options": [
+          { "selected": true, "text": "Все", "value": "all" },
+          { "selected": false, "text": "Нерешённые", "value": "open" },
+          { "selected": false, "text": "Решённые", "value": "resolved" }
+        ],
+        "query": "all,open,resolved",
+        "type": "custom"
+      },
+      {
+        "current": { "selected": true, "text": "Все", "value": "all" },
+        "hide": 0,
+        "includeAll": false,
+        "label": "RP-заявки",
+        "multi": false,
+        "name": "rp_status",
+        "options": [
+          { "selected": true, "text": "Все", "value": "all" },
+          { "selected": false, "text": "Принятые", "value": "accepted" },
+          { "selected": false, "text": "Не принятые", "value": "other" }
+        ],
+        "query": "all,accepted,other",
+        "type": "custom"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "title": "Amy Community Dashboard",
+  "uid": "amy-community",
+  "version": 1,
+  "weekStart": ""
+}
