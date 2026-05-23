@@ -10,7 +10,7 @@
       <input type="text" placeholder="Поиск статьи..." />
     </div>
     <div class="actions">
-      <button class="primary" type="button" @click="supportOpen = true">Поддержка</button>
+      <button class="primary" type="button" aria-label="Открыть форму поддержки" @click="supportOpen = true">Поддержка</button>
     </div>
     <SupportModal :open="supportOpen" @close="supportOpen = false" />
   </header>
