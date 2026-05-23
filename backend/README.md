@@ -17,6 +17,7 @@ Copy `.env.example` to `.env` and set values:
 - `DISCORD_RP_WEBHOOK` - webhook for RP applications moderation channel
 - `DISCORD_RP_MODERATOR_IDS` - comma-separated Discord IDs allowed to moderate RP applications
 - `MINECRAFT_SERVER_TOKEN` - shared secret for Minecraft server <-> website API
+- `DISCORD_BOT_TOKEN` and `DISCORD_GUILD_ID` - optional Discord bot access for member role sync into Grafana
 
 ## Run
 ```bash

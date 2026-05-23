@@ -118,6 +118,13 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 			variant TEXT NOT NULL DEFAULT '',
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
+		`CREATE TABLE IF NOT EXISTS discord_member_states (
+			discord_id TEXT PRIMARY KEY,
+			roles TEXT[] NOT NULL DEFAULT '{}',
+			discord_status TEXT NOT NULL DEFAULT 'unknown',
+			synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS discord_member_states_synced_at_idx ON discord_member_states(synced_at DESC)`,
 	}
 
 	for _, statement := range statements {

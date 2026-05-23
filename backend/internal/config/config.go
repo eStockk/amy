@@ -17,6 +17,7 @@ type Config struct {
 	TelegramNewsChannel  string
 	DiscordNewsChannelID string
 	DiscordBotToken      string
+	DiscordGuildID       string
 }
 
 func Load() Config {
@@ -35,6 +36,7 @@ func Load() Config {
 		TelegramNewsChannel:  getEnv("TELEGRAM_NEWS_CHANNEL", ""),
 		DiscordNewsChannelID: getEnv("DISCORD_NEWS_CHANNEL_ID", ""),
 		DiscordBotToken:      getEnv("DISCORD_BOT_TOKEN", ""),
+		DiscordGuildID:       getEnv("DISCORD_GUILD_ID", ""),
 	}
 }
 

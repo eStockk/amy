@@ -49,6 +49,7 @@ func main() {
 	healthHandler := handlers.NewHealthHandler(postgres)
 	playerHandler := handlers.NewPlayerHandler(postgres)
 	newsHandler := handlers.NewNewsHandler(postgres, cfg.TelegramNewsChannel, cfg.DiscordBotToken, cfg.DiscordNewsChannelID)
+	discordMemberSync := handlers.NewDiscordMemberSync(postgres, cfg.DiscordBotToken, cfg.DiscordGuildID)
 	serverStatusHandler := handlers.NewServerStatusHandler(cfg.MinecraftServerAddr)
 	supportHandler := handlers.NewSupportHandler(postgres, cfg.DiscordTicketWebhook)
 	discordHandler := handlers.NewDiscordAuthHandler(
@@ -69,6 +70,7 @@ func main() {
 		log.Printf("discord migrations failed: %v", err)
 	}
 	syncCancel()
+	discordMemberSync.Start(ctx)
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
