@@ -215,7 +215,7 @@ func (h *DiscordAuthHandler) ModerateRPApplication(w http.ResponseWriter, r *htt
 
 	moderator, err := h.requireAuthenticatedUser(r)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, "moderator auth required")
+		http.Redirect(w, r, "/api/auth/discord/start?redirect="+url.QueryEscape(r.URL.RequestURI()), http.StatusFound)
 		return
 	}
 	if !h.isRPModerator(moderator.DiscordID) {

@@ -145,12 +145,17 @@ func (h *DiscordAuthHandler) Start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	authorizeURL := "https://discord.com/api/oauth2/authorize?" + url.Values{
+	values := url.Values{
 		"client_id":     {h.clientID},
 		"redirect_uri":  {h.redirectURL},
 		"response_type": {"code"},
 		"scope":         {"identify email"},
-	}.Encode()
+	}
+	if redirectPath := safeInternalRedirectPath(r.URL.Query().Get("redirect")); redirectPath != "" {
+		values.Set("state", redirectPath)
+	}
+
+	authorizeURL := "https://discord.com/api/oauth2/authorize?" + values.Encode()
 
 	http.Redirect(w, r, authorizeURL, http.StatusFound)
 }
@@ -241,12 +246,32 @@ func (h *DiscordAuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 
 	setSessionCookie(w, r, h.frontendURL, user.ID)
 
-	redirectTo := h.frontendURL
-	if redirectTo == "" {
-		redirectTo = "http://localhost:3000"
-	}
+	redirectTo := h.redirectTargetFromState(r.URL.Query().Get("state"))
 
 	http.Redirect(w, r, redirectTo, http.StatusFound)
+}
+
+func (h *DiscordAuthHandler) redirectTargetFromState(state string) string {
+	base := strings.TrimRight(h.frontendURL, "/")
+	if base == "" {
+		base = "http://localhost:3000"
+	}
+	if redirectPath := safeInternalRedirectPath(state); redirectPath != "" {
+		return base + redirectPath
+	}
+	return base
+}
+
+func safeInternalRedirectPath(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || !strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "//") {
+		return ""
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.IsAbs() || parsed.Host != "" {
+		return ""
+	}
+	return parsed.RequestURI()
 }
 
 func (h *DiscordAuthHandler) Me(w http.ResponseWriter, r *http.Request) {
