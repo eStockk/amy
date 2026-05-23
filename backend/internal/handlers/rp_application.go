@@ -506,6 +506,7 @@ func webhookURLWithWait(raw string) (string, error) {
 
 	query := parsed.Query()
 	query.Set("wait", "true")
+	query.Set("with_components", "true")
 	parsed.RawQuery = query.Encode()
 	return parsed.String(), nil
 }
@@ -712,7 +713,7 @@ func (h *DiscordAuthHandler) updateRPApplicationDiscordMessage(app rpApplication
 		return err
 	}
 
-	editURL := base + "/messages/" + url.PathEscape(app.DiscordMessageID)
+	editURL := base + "/messages/" + url.PathEscape(app.DiscordMessageID) + "?with_components=true"
 	req, err := http.NewRequest(http.MethodPatch, editURL, bytes.NewReader(raw))
 	if err != nil {
 		return err

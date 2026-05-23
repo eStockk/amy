@@ -264,7 +264,7 @@ func (h *SupportHandler) updateDiscordTicketMessage(ticket models.Ticket) error 
 		return err
 	}
 
-	req, err := http.NewRequest(http.MethodPatch, base+"/messages/"+url.PathEscape(ticket.DiscordMessageID), bytes.NewReader(raw))
+	req, err := http.NewRequest(http.MethodPatch, base+"/messages/"+url.PathEscape(ticket.DiscordMessageID)+"?with_components=true", bytes.NewReader(raw))
 	if err != nil {
 		return err
 	}
