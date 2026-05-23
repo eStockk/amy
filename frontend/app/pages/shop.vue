@@ -6,37 +6,28 @@
       <div class="premium-copy">
         <p class="eyebrow">Подписка</p>
         <h1>Premium</h1>
-        <p class="lead">
-          Единый статус для игроков, которым нужны удобство, косметика и мягкая персонализация без влияния на честный прогресс.
-        </p>
+        <p class="lead">Единый статус для игроков, которым нужны удобство, косметика и персонализация.</p>
       </div>
 
       <ul class="premium-list">
-        <li>Ускоренная прокачка бытовых навыков</li>
+        <li>Ускоренная прокачка</li>
         <li>Кастомные сообщения о входе и выходе</li>
-        <li>Косметические элементы для RP-образа</li>
+        <li>Косметические элементы</li>
       </ul>
 
       <button class="primary" type="button">Оформить Premium</button>
     </section>
 
-    <section class="feature">
-      <div class="feature-image">
-        <img :src="buildKitImage" alt="Набор строителя" />
-      </div>
-      <div class="feature-copy">
-        <p class="eyebrow">Набор</p>
-        <h2>Набор строителя</h2>
-        <p>
-          Практичный комплект для тех, кто развивает постройки, интерьер и детали поселений. Хорошо смотрится как отдельный стартовый набор и как витрина магазина.
-        </p>
-      </div>
-    </section>
-
     <section class="products">
       <h2>Товары</h2>
       <div class="grid">
-        <article v-for="item in products" :key="item.title" class="product">
+        <article
+          v-for="item in products"
+          :key="item.title"
+          class="product"
+          :class="{ 'product-image': item.image }"
+          :style="item.image ? { '--product-image': `url(${item.image})` } : undefined"
+        >
           <span class="product-type">{{ item.type }}</span>
           <h3>{{ item.title }}</h3>
           <p>{{ item.text }}</p>
@@ -54,22 +45,23 @@ const products = [
   {
     type: 'Учебник',
     title: 'Академический учебник Воина',
-    text: 'Материал для развития боевых навыков персонажа и уверенного участия в опасных RP-сценах.'
+    text: 'Материал для развития боевых навыков персонажа.'
   },
   {
     type: 'Учебник',
     title: 'Академический учебник Кузнеца',
-    text: 'Подходит для ремесленного прогресса, кузнечного RP и развития мастерской.'
+    text: 'Подходит для ремесленного прогресса и кузнечного RP.'
   },
   {
     type: 'Учебник',
     title: 'Академический учебник Мага',
-    text: 'Предмет для магической специализации, атмосферного отыгрыша и косметического образа.'
+    text: 'Предмет для магической специализации и косметического отыгрыша.'
   },
   {
     type: 'Набор',
     title: 'Набор "Строителя"',
-    text: 'Комплект для игроков, которые активно развивают постройки, декор и личные пространства.'
+    text: 'Комплект для игроков, которые активно развивают постройки и декор.',
+    image: buildKitImage
   }
 ]
 </script>
@@ -80,55 +72,24 @@ const products = [
   gap: 24px;
 }
 
-.premium,
-.feature {
-  border-radius: var(--radius-lg);
-  border: 1px solid rgba(228, 94, 56, 0.28);
-  box-shadow: var(--shadow);
-  overflow: hidden;
-}
-
 .premium {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(260px, 0.8fr) auto;
+  grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr) auto;
   align-items: center;
   gap: 24px;
   padding: 28px;
-  background: radial-gradient(circle at 12% 0%, rgba(228, 94, 56, 0.26), transparent 42%),
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(228, 94, 56, 0.32);
+  background: radial-gradient(circle at 12% 0%, rgba(228, 94, 56, 0.28), transparent 42%),
     linear-gradient(135deg, rgba(34, 35, 48, 0.98), rgba(18, 18, 24, 0.96));
-}
-
-.feature {
-  display: grid;
-  grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.1fr);
-  min-height: 280px;
-  background: linear-gradient(135deg, rgba(18, 18, 24, 0.96), rgba(34, 35, 48, 0.96));
-}
-
-.feature-image {
-  min-height: 280px;
-  background: #111118;
-}
-
-.feature-image img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.feature-copy {
-  display: grid;
-  align-content: center;
-  gap: 12px;
-  padding: 28px;
+  box-shadow: var(--shadow);
 }
 
 .eyebrow {
-  margin: 0;
+  margin: 0 0 6px;
   color: var(--accent);
   text-transform: uppercase;
   font-size: 12px;
-  font-weight: 700;
 }
 
 h1,
@@ -143,10 +104,8 @@ h1 {
 }
 
 .lead,
-.feature-copy p,
 .product p {
   color: var(--muted);
-  line-height: 1.6;
 }
 
 .premium-list {
@@ -186,14 +145,31 @@ h1 {
 }
 
 .product {
+  position: relative;
   display: grid;
   align-content: start;
   gap: 10px;
+  min-height: 178px;
   padding: 18px;
   border-radius: var(--radius-md);
   border: 1px solid var(--stroke);
   background: var(--panel);
-  min-height: 178px;
+  overflow: hidden;
+}
+
+.product > * {
+  position: relative;
+  z-index: 1;
+}
+
+.product-image {
+  min-height: 230px;
+  border-color: rgba(228, 94, 56, 0.28);
+  background-image: linear-gradient(90deg, rgba(15, 15, 20, 0.95), rgba(15, 15, 20, 0.78) 52%, rgba(15, 15, 20, 0.28)),
+    var(--product-image);
+  background-position: center, center;
+  background-size: cover, cover;
+  box-shadow: var(--shadow);
 }
 
 .product-type {
@@ -202,13 +178,14 @@ h1 {
   border-radius: 999px;
   color: var(--muted);
   border: 1px solid var(--stroke);
+  background: rgba(10, 10, 14, 0.46);
   font-size: 12px;
 }
 
 @media (max-width: 1100px) {
-  .premium,
-  .feature {
+  .premium {
     grid-template-columns: 1fr;
+    align-items: stretch;
   }
 
   .primary {
@@ -217,13 +194,8 @@ h1 {
 }
 
 @media (max-width: 640px) {
-  .premium,
-  .feature-copy {
+  .premium {
     padding: 20px;
-  }
-
-  .feature-image {
-    min-height: 220px;
   }
 
   h1 {
@@ -232,6 +204,12 @@ h1 {
 
   .primary {
     width: 100%;
+  }
+
+  .product-image {
+    background-image: linear-gradient(180deg, rgba(15, 15, 20, 0.88), rgba(15, 15, 20, 0.66)),
+      var(--product-image);
+    background-position: center, center;
   }
 }
 </style>
