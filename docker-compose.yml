@@ -117,9 +117,54 @@ services:
     command:
       - --path.rootfs=/host
       - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+      - --collector.textfile.directory=/textfile
     pid: host
     volumes:
       - /:/host:ro,rslave
+      - node-exporter-textfile:/textfile:ro
+
+  storage-metrics:
+    image: alpine:3.20
+    restart: unless-stopped
+    logging: *default-logging
+    mem_limit: 64m
+    mem_reservation: 32m
+    command:
+      - /bin/sh
+      - -c
+      - |
+        while true; do
+          tmp=/textfile/amy_storage.prom.tmp
+          out=/textfile/amy_storage.prom
+          {
+            echo '# HELP amy_storage_category_bytes Estimated storage used by Amy storage categories.'
+            echo '# TYPE amy_storage_category_bytes gauge'
+            for item in \
+              'Логи|Docker-логи|/host/var/lib/docker/containers' \
+              'Логи|Системные логи|/host/var/log' \
+              'Сервер|Файлы приложения|/host/opt/amy/app' \
+              'Сервер|PostgreSQL|/host/var/lib/docker/volumes/app_postgres-data/_data' \
+              'Сервер|Prometheus|/host/var/lib/docker/volumes/app_prometheus-data/_data' \
+              'Сервер|Grafana|/host/var/lib/docker/volumes/app_grafana-data/_data'; do
+              category=$${item%%|*}
+              rest=$${item#*|}
+              section=$${rest%%|*}
+              path=$${rest#*|}
+              display_path=$${path#/host}
+              if [ -e "$$path" ]; then
+                bytes=$$(du -sk "$$path" 2>/dev/null | awk '{print $$1 * 1024}')
+              else
+                bytes=0
+              fi
+              printf 'amy_storage_category_bytes{category="%s",section="%s",path="%s"} %s\n' "$$category" "$$section" "$$display_path" "$${bytes:-0}"
+            done
+          } > "$$tmp"
+          mv "$$tmp" "$$out"
+          sleep 60
+        done
+    volumes:
+      - /:/host:ro,rslave
+      - node-exporter-textfile:/textfile
 
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.15.0
@@ -210,5 +255,6 @@ volumes:
   postgres-data: {}
   prometheus-data: {}
   grafana-data: {}
+  node-exporter-textfile: {}
   letsencrypt-data: {}
   certbot-www: {}
