@@ -21,6 +21,7 @@ type Config struct {
 	VAPIDPublicKey         string
 	VAPIDPrivateKey        string
 	SupportPushSubject     string
+	SupportStorageDir      string
 }
 
 func Load() Config {
@@ -43,6 +44,7 @@ func Load() Config {
 		VAPIDPublicKey:         getEnv("VAPID_PUBLIC_KEY", ""),
 		VAPIDPrivateKey:        getEnv("VAPID_PRIVATE_KEY", ""),
 		SupportPushSubject:     getEnv("SUPPORT_PUSH_SUBJECT", "mailto:support@amyworld.ru"),
+		SupportStorageDir:      getEnv("SUPPORT_STORAGE_DIR", "data/support"),
 	}
 }
 

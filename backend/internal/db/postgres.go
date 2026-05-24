@@ -100,6 +100,7 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 		`ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS discord_message_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS discord_channel_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ`,
+		`ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ`,
 		`CREATE INDEX IF NOT EXISTS support_tickets_status_created_at_idx ON support_tickets(status, created_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS support_tickets_owner_created_at_idx ON support_tickets(owner_discord_id, created_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS support_tickets_discord_message_id_idx ON support_tickets(discord_message_id)`,
@@ -117,6 +118,17 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS support_ticket_messages_ticket_created_at_idx ON support_ticket_messages(ticket_id, created_at ASC)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS support_ticket_messages_discord_message_id_uq ON support_ticket_messages(discord_message_id) WHERE discord_message_id <> ''`,
+		`CREATE TABLE IF NOT EXISTS support_ticket_attachments (
+			id BIGSERIAL PRIMARY KEY,
+			ticket_id BIGINT NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
+			message_id BIGINT NOT NULL REFERENCES support_ticket_messages(id) ON DELETE CASCADE,
+			file_name TEXT NOT NULL,
+			mime_type TEXT NOT NULL,
+			size_bytes BIGINT NOT NULL DEFAULT 0,
+			storage_path TEXT NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS support_ticket_attachments_ticket_idx ON support_ticket_attachments(ticket_id, created_at ASC)`,
 		`CREATE TABLE IF NOT EXISTS support_push_subscriptions (
 			id BIGSERIAL PRIMARY KEY,
 			discord_id TEXT NOT NULL REFERENCES discord_users(discord_id) ON DELETE CASCADE,
@@ -145,10 +157,16 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 		)`,
 		`CREATE TABLE IF NOT EXISTS discord_member_states (
 			discord_id TEXT PRIMARY KEY,
+			username TEXT NOT NULL DEFAULT '',
+			global_name TEXT NOT NULL DEFAULT '',
+			nick TEXT NOT NULL DEFAULT '',
 			roles TEXT[] NOT NULL DEFAULT '{}',
 			discord_status TEXT NOT NULL DEFAULT 'unknown',
 			synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
+		`ALTER TABLE discord_member_states ADD COLUMN IF NOT EXISTS username TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE discord_member_states ADD COLUMN IF NOT EXISTS global_name TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE discord_member_states ADD COLUMN IF NOT EXISTS nick TEXT NOT NULL DEFAULT ''`,
 		`CREATE INDEX IF NOT EXISTS discord_member_states_synced_at_idx ON discord_member_states(synced_at DESC)`,
 	}
 

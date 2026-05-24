@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -32,8 +33,11 @@ type discordGuildRole struct {
 
 type discordGuildMember struct {
 	User struct {
-		ID string `json:"id"`
+		ID         string `json:"id"`
+		Username   string `json:"username"`
+		GlobalName string `json:"global_name"`
 	} `json:"user"`
+	Nick  string   `json:"nick"`
 	Roles []string `json:"roles"`
 }
 
@@ -176,12 +180,18 @@ func (s *DiscordMemberSync) Sync(ctx context.Context) error {
 
 			if _, err := tx.ExecContext(
 				ctx,
-				`INSERT INTO discord_member_states (discord_id, roles, discord_status, synced_at)
-				 VALUES ($1, $2, 'offline', $3)
+				`INSERT INTO discord_member_states (discord_id, username, global_name, nick, roles, discord_status, synced_at)
+				 VALUES ($1, $2, $3, $4, $5, 'offline', $6)
 				 ON CONFLICT (discord_id) DO UPDATE SET
+				   username = EXCLUDED.username,
+				   global_name = EXCLUDED.global_name,
+				   nick = EXCLUDED.nick,
 				   roles = EXCLUDED.roles,
 				   synced_at = EXCLUDED.synced_at`,
 				discordID,
+				strings.TrimSpace(member.User.Username),
+				strings.TrimSpace(member.User.GlobalName),
+				strings.TrimSpace(member.Nick),
 				roleNames,
 				now,
 			); err != nil {
@@ -424,25 +434,35 @@ func (s *DiscordMemberSync) handleSupportTicketReply(ctx context.Context, raw js
 	if s.ticketChannelID != "" && message.ChannelID != s.ticketChannelID {
 		return nil
 	}
-	if message.MessageReference == nil || strings.TrimSpace(message.MessageReference.MessageID) == "" {
-		return nil
-	}
-
 	var ticketID int64
 	var ticketOwner string
-	err := s.db.QueryRowContext(
-		ctx,
-		`SELECT id, owner_discord_id
-		 FROM support_tickets
-		 WHERE discord_message_id = $1
-		 LIMIT 1`,
-		strings.TrimSpace(message.MessageReference.MessageID),
-	).Scan(&ticketID, &ticketOwner)
+	content := strings.TrimSpace(message.Content)
+	adminMessage := content
+	var err error
+	if message.MessageReference != nil && strings.TrimSpace(message.MessageReference.MessageID) != "" {
+		err = s.db.QueryRowContext(
+			ctx,
+			`SELECT id, owner_discord_id
+			 FROM support_tickets
+			 WHERE discord_message_id = $1
+			 LIMIT 1`,
+			strings.TrimSpace(message.MessageReference.MessageID),
+		).Scan(&ticketID, &ticketOwner)
+	} else if matched := supportTicketPrefix.FindStringSubmatch(content); len(matched) == 3 {
+		ticketID, _ = strconv.ParseInt(matched[1], 10, 64)
+		adminMessage = strings.TrimSpace(matched[2])
+		err = s.db.QueryRowContext(ctx, `SELECT owner_discord_id FROM support_tickets WHERE id = $1`, ticketID).Scan(&ticketOwner)
+	} else {
+		return nil
+	}
 	if err == sql.ErrNoRows {
 		return nil
 	}
 	if err != nil {
 		return err
+	}
+	if adminMessage == "" {
+		return nil
 	}
 
 	authorName := strings.TrimSpace(message.MemberNick())
@@ -459,7 +479,7 @@ func (s *DiscordMemberSync) handleSupportTicketReply(ctx context.Context, raw js
 		authorName,
 		message.Author.ID,
 		status,
-		strings.TrimSpace(message.Content),
+		adminMessage,
 		strings.TrimSpace(message.ID),
 		time.Now().UTC(),
 	)
@@ -468,7 +488,7 @@ func (s *DiscordMemberSync) handleSupportTicketReply(ctx context.Context, raw js
 		return err
 	}
 	if affected, _ := result.RowsAffected(); affected > 0 && s.notifySupportReply != nil {
-		s.notifySupportReply(ctx, ticketID, authorName, strings.TrimSpace(message.Content))
+		s.notifySupportReply(ctx, ticketID, authorName, adminMessage)
 	}
 	return nil
 }

@@ -6,9 +6,14 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -25,6 +30,7 @@ type SupportHandler struct {
 	vapidPublicKey  string
 	vapidPrivateKey string
 	pushSubject     string
+	storageDir      string
 }
 
 type ticketRequest struct {
@@ -36,7 +42,11 @@ type ticketRequest struct {
 	Message     string `json:"message"`
 }
 
-func NewSupportHandler(db *sql.DB, webhookURL, frontendURL, vapidPublicKey, vapidPrivateKey, pushSubject string) *SupportHandler {
+func NewSupportHandler(db *sql.DB, webhookURL, frontendURL, vapidPublicKey, vapidPrivateKey, pushSubject, storageDir string) *SupportHandler {
+	storageDir = strings.TrimSpace(storageDir)
+	if storageDir == "" {
+		storageDir = "data/support"
+	}
 	return &SupportHandler{
 		db:              db,
 		webhookURL:      webhookURL,
@@ -44,6 +54,7 @@ func NewSupportHandler(db *sql.DB, webhookURL, frontendURL, vapidPublicKey, vapi
 		vapidPublicKey:  strings.TrimSpace(vapidPublicKey),
 		vapidPrivateKey: strings.TrimSpace(vapidPrivateKey),
 		pushSubject:     strings.TrimSpace(pushSubject),
+		storageDir:      storageDir,
 	}
 }
 
@@ -70,8 +81,8 @@ func (h *SupportHandler) Create(w http.ResponseWriter, r *http.Request) {
 	payload.Category = strings.TrimSpace(payload.Category)
 	payload.Message = strings.TrimSpace(payload.Message)
 
-	if payload.Name == "" || payload.DiscordNick == "" || payload.Subject == "" || payload.Message == "" {
-		writeError(w, http.StatusBadRequest, "name, discordNick, subject, message required")
+	if payload.DiscordNick == "" || payload.Subject == "" || payload.Message == "" {
+		writeError(w, http.StatusBadRequest, "discordNick, subject, message required")
 		return
 	}
 
@@ -79,6 +90,19 @@ func (h *SupportHandler) Create(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	ownerDiscordID := currentDiscordIDFromCookie(r)
+	discordID, displayName, err := h.resolveDiscordNick(ctx, payload.DiscordNick, ownerDiscordID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "discord nick is not found on server")
+		return
+	}
+	if ownerDiscordID == "" {
+		ownerDiscordID = discordID
+	}
+	if payload.Name == "" {
+		payload.Name = displayName
+	}
+	payload.DiscordNick = displayName
+
 	ticket := models.Ticket{
 		Name:            payload.Name,
 		Email:           payload.Email,
@@ -92,7 +116,7 @@ func (h *SupportHandler) Create(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:       time.Now().UTC(),
 	}
 
-	err := h.db.QueryRowContext(
+	err = h.db.QueryRowContext(
 		ctx,
 		`INSERT INTO support_tickets (name, email, discord_nick, owner_discord_id, subject, category, message, status, moderation_token, created_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -123,6 +147,7 @@ func (h *SupportHandler) Create(w http.ResponseWriter, r *http.Request) {
 		ticket.Message,
 		ticket.CreatedAt,
 	)
+	_ = h.writeTicketHistoryHTML(ctx, ticket)
 
 	if messageID, channelID, err := h.sendDiscordWebhook(ticket); err == nil && messageID != "" {
 		ticket.DiscordMessageID = messageID
@@ -133,6 +158,10 @@ func (h *SupportHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *SupportHandler) Moderate(w http.ResponseWriter, r *http.Request) {
+	if attachmentID, ok := parseSupportAttachmentIDFromPath(r.URL.Path); ok {
+		h.Attachment(w, r, attachmentID)
+		return
+	}
 	if strings.HasSuffix(strings.TrimRight(r.URL.Path, "/"), "/notifications") {
 		h.Notifications(w, r)
 		return
@@ -153,7 +182,7 @@ func (h *SupportHandler) Moderate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	action := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
-	if action != "resolve" && action != "reconsider" {
+	if action != "resolve" && action != "reconsider" && action != "archive" && action != "unarchive" && action != "delete" && action != "unarchive_prompt" {
 		writeError(w, http.StatusBadRequest, "invalid action")
 		return
 	}
@@ -181,22 +210,55 @@ func (h *SupportHandler) Moderate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if action == "unarchive_prompt" {
+		h.writeTicketDeleteConfirmHTML(w, ticket)
+		return
+	}
+	if action == "delete" {
+		if err := h.deleteTicket(ctx, ticket); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to delete ticket")
+			return
+		}
+		h.writeTicketModerationHTML(w, ticket, action)
+		return
+	}
+
 	now := time.Now().UTC()
 	nextStatus := "resolved"
 	var resolvedAt any = now
+	var archivedAt any = nil
 	if action == "reconsider" {
 		nextStatus = "open"
 		resolvedAt = nil
+		archivedAt = nil
 		ticket.ResolvedAt = nil
+		ticket.ArchivedAt = nil
+	} else if action == "archive" {
+		nextStatus = "archived"
+		if ticket.ResolvedAt == nil {
+			ticket.ResolvedAt = &now
+		}
+		resolvedAt = ticket.ResolvedAt
+		archivedAt = now
+		ticket.ArchivedAt = &now
+	} else if action == "unarchive" {
+		nextStatus = "resolved"
+		if ticket.ResolvedAt == nil {
+			ticket.ResolvedAt = &now
+		}
+		resolvedAt = ticket.ResolvedAt
+		archivedAt = nil
+		ticket.ArchivedAt = nil
 	} else {
 		ticket.ResolvedAt = &now
 	}
 
 	_, err = h.db.ExecContext(
 		ctx,
-		`UPDATE support_tickets SET status = $1, resolved_at = $2 WHERE id = $3`,
+		`UPDATE support_tickets SET status = $1, resolved_at = $2, archived_at = $3 WHERE id = $4`,
 		nextStatus,
 		resolvedAt,
+		archivedAt,
 		ticket.ID,
 	)
 	if err != nil {
@@ -205,6 +267,7 @@ func (h *SupportHandler) Moderate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ticket.Status = nextStatus
+	_ = h.writeTicketHistoryHTML(ctx, ticket)
 	if err := h.updateDiscordTicketMessage(ticket); err != nil {
 		writeError(w, http.StatusBadGateway, "failed to update discord ticket")
 		return
@@ -262,12 +325,14 @@ func (h *SupportHandler) buildDiscordTicketPayload(ticket models.Ticket) map[str
 	if normalizedTicketStatus(ticket.Status) == "resolved" {
 		statusText = "Решён"
 	}
+	if normalizedTicketStatus(ticket.Status) == "archived" {
+		statusText = "Архив"
+	}
 
 	embed := map[string]any{
 		"title":       ticket.Subject,
 		"description": "Статус тикета: " + statusText,
 		"fields": []map[string]string{
-			{"name": "Name", "value": safeValue(ticket.Name)},
 			{"name": "Discord", "value": safeValue(ticket.DiscordNick)},
 			{"name": "Category", "value": safeValue(ticket.Category)},
 			{"name": "Message", "value": trimForDiscord(ticket.Message)},
@@ -331,7 +396,7 @@ func (h *SupportHandler) loadTicket(ctx context.Context, ticketID int64) (models
 		`SELECT id, name, email, discord_nick, owner_discord_id, subject, category, message, status,
 		        moderation_token, discord_message_id, discord_channel_id,
 		        (SELECT COUNT(*) FROM support_ticket_messages m WHERE m.ticket_id = support_tickets.id AND m.author_type = 'admin' AND m.read_by_user = FALSE) AS unread_admin_count,
-		        resolved_at, created_at
+		        resolved_at, archived_at, created_at
 		 FROM support_tickets
 		 WHERE id = $1`,
 		ticketID,
@@ -353,7 +418,7 @@ func (h *SupportHandler) List(w http.ResponseWriter, r *http.Request) {
 		`SELECT id, name, email, discord_nick, owner_discord_id, subject, category, message, status,
 		        moderation_token, discord_message_id, discord_channel_id,
 		        (SELECT COUNT(*) FROM support_ticket_messages m WHERE m.ticket_id = support_tickets.id AND m.author_type = 'admin' AND m.read_by_user = FALSE) AS unread_admin_count,
-		        resolved_at, created_at
+		        resolved_at, archived_at, created_at
 		 FROM support_tickets
 		 WHERE owner_discord_id = $1
 		 ORDER BY created_at DESC
@@ -409,16 +474,13 @@ func (h *SupportHandler) Messages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Method == http.MethodPost {
-		var payload struct {
-			Message string `json:"message"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid json")
+		message, files, err := h.readMessagePayload(r)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		message := strings.TrimSpace(payload.Message)
-		if message == "" {
-			writeError(w, http.StatusBadRequest, "message required")
+		if message == "" && len(files) == 0 {
+			writeError(w, http.StatusBadRequest, "message or image required")
 			return
 		}
 		if len([]rune(message)) > 2000 {
@@ -426,20 +488,29 @@ func (h *SupportHandler) Messages(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		_, err = h.db.ExecContext(
+		var messageID int64
+		err = h.db.QueryRowContext(
 			ctx,
 			`INSERT INTO support_ticket_messages (ticket_id, author_type, author_name, author_discord_id, message, read_by_user, created_at)
-			 VALUES ($1, 'user', $2, $3, $4, TRUE, $5)`,
+			 VALUES ($1, 'user', $2, $3, $4, TRUE, $5)
+			 RETURNING id`,
 			ticket.ID,
 			ticket.Name,
 			ownerDiscordID,
 			message,
 			time.Now().UTC(),
-		)
+		).Scan(&messageID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to save message")
 			return
 		}
+		for _, file := range files {
+			if err := h.saveTicketAttachment(ctx, ticket.ID, messageID, file); err != nil {
+				writeError(w, http.StatusBadRequest, err.Error())
+				return
+			}
+		}
+		_ = h.writeTicketHistoryHTML(ctx, ticket)
 		if err := h.sendDiscordTicketChatMessage(ticket, message); err != nil {
 			writeError(w, http.StatusBadGateway, "failed to send message to discord")
 			return
@@ -585,10 +656,40 @@ func (h *SupportHandler) loadTicketMessages(ctx context.Context, ticketID int64)
 		}
 		messages = append(messages, message)
 	}
-	return messages, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(messages) == 0 {
+		return messages, nil
+	}
+	attachments, err := h.loadTicketAttachments(ctx, ticketID)
+	if err != nil {
+		return nil, err
+	}
+	byMessage := make(map[int64][]models.TicketAttachment)
+	for _, attachment := range attachments {
+		byMessage[attachment.MessageID] = append(byMessage[attachment.MessageID], attachment)
+	}
+	for i := range messages {
+		messages[i].Attachments = byMessage[messages[i].ID]
+	}
+	return messages, nil
 }
 
 func (h *SupportHandler) ticketDiscordComponents(ticket models.Ticket) []any {
+	status := normalizedTicketStatus(ticket.Status)
+	if status == "resolved" {
+		return []any{map[string]any{"type": 1, "components": []any{
+			map[string]any{"type": 2, "style": 5, "label": "На пересмотр", "url": h.ticketModerationURL(ticket.ID, "reconsider", ticket.ModerationToken)},
+			map[string]any{"type": 2, "style": 5, "label": "Архивировать", "url": h.ticketModerationURL(ticket.ID, "archive", ticket.ModerationToken)},
+			map[string]any{"type": 2, "style": 5, "label": "Удалить сразу", "url": h.ticketModerationURL(ticket.ID, "delete", ticket.ModerationToken)},
+		}}}
+	}
+	if status == "archived" {
+		return []any{map[string]any{"type": 1, "components": []any{
+			map[string]any{"type": 2, "style": 5, "label": "Разархивировать/удалить сразу", "url": h.ticketModerationURL(ticket.ID, "unarchive_prompt", ticket.ModerationToken)},
+		}}}
+	}
 	label := "Решён"
 	action := "resolve"
 	if normalizedTicketStatus(ticket.Status) == "resolved" {
@@ -616,8 +717,9 @@ func (h *SupportHandler) ticketModerationURL(ticketID int64, action, token strin
 
 func normalizedTicketStatus(status string) string {
 	status = strings.ToLower(strings.TrimSpace(status))
-	if status == "resolved" {
-		return "resolved"
+	switch status {
+	case "resolved", "archived":
+		return status
 	}
 	return "open"
 }
@@ -645,6 +747,16 @@ func parseSupportMessagesIDFromPath(path string) (int64, bool) {
 	return id, err == nil && id > 0
 }
 
+func parseSupportAttachmentIDFromPath(path string) (int64, bool) {
+	trimmed := strings.Trim(path, "/")
+	parts := strings.Split(trimmed, "/")
+	if len(parts) != 6 || parts[0] != "api" || parts[1] != "support" || parts[2] != "tickets" || parts[4] != "attachments" {
+		return 0, false
+	}
+	id, err := strconv.ParseInt(parts[5], 10, 64)
+	return id, err == nil && id > 0
+}
+
 func currentDiscordIDFromCookie(r *http.Request) string {
 	cookie, err := r.Cookie("discord_id")
 	if err != nil {
@@ -656,6 +768,7 @@ func currentDiscordIDFromCookie(r *http.Request) string {
 func scanSupportTicket(scanner sqlScanner) (models.Ticket, error) {
 	var ticket models.Ticket
 	var resolvedAt sql.NullTime
+	var archivedAt sql.NullTime
 	err := scanner.Scan(
 		&ticket.ID,
 		&ticket.Name,
@@ -671,12 +784,276 @@ func scanSupportTicket(scanner sqlScanner) (models.Ticket, error) {
 		&ticket.DiscordChannelID,
 		&ticket.UnreadAdminCount,
 		&resolvedAt,
+		&archivedAt,
 		&ticket.CreatedAt,
 	)
 	if resolvedAt.Valid {
 		ticket.ResolvedAt = &resolvedAt.Time
 	}
+	if archivedAt.Valid {
+		ticket.ArchivedAt = &archivedAt.Time
+	}
 	return ticket, err
+}
+
+type supportUpload struct {
+	Name     string
+	MimeType string
+	Bytes    []byte
+}
+
+const maxSupportImageBytes = 10 * 1024 * 1024
+
+var supportTicketPrefix = regexp.MustCompile(`(?i)^\s*(?:#|ticket\s*#?|тикет\s*#?)(\d+)\s*[:\-–]?\s*(.*)$`)
+
+func (h *SupportHandler) resolveDiscordNick(ctx context.Context, nick, ownerDiscordID string) (string, string, error) {
+	nick = strings.TrimSpace(nick)
+	if nick == "" {
+		return "", "", fmt.Errorf("empty nick")
+	}
+
+	var discordID, username, globalName, memberNick string
+	if ownerDiscordID != "" {
+		err := h.db.QueryRowContext(
+			ctx,
+			`SELECT discord_id, username, global_name, nick
+			 FROM discord_member_states
+			 WHERE discord_id = $1
+			   AND (LOWER(username) = LOWER($2) OR LOWER(global_name) = LOWER($2) OR LOWER(nick) = LOWER($2))
+			 LIMIT 1`,
+			ownerDiscordID,
+			nick,
+		).Scan(&discordID, &username, &globalName, &memberNick)
+		if err == nil {
+			return discordID, bestDiscordDisplayName(memberNick, globalName, username, nick), nil
+		}
+		return "", "", err
+	}
+
+	err := h.db.QueryRowContext(
+		ctx,
+		`SELECT discord_id, username, global_name, nick
+		 FROM discord_member_states
+		 WHERE LOWER(username) = LOWER($1) OR LOWER(global_name) = LOWER($1) OR LOWER(nick) = LOWER($1)
+		 ORDER BY synced_at DESC
+		 LIMIT 1`,
+		nick,
+	).Scan(&discordID, &username, &globalName, &memberNick)
+	if err != nil {
+		return "", "", err
+	}
+	return discordID, bestDiscordDisplayName(memberNick, globalName, username, nick), nil
+}
+
+func bestDiscordDisplayName(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return "Discord user"
+}
+
+func (h *SupportHandler) readMessagePayload(r *http.Request) (string, []supportUpload, error) {
+	contentType := r.Header.Get("Content-Type")
+	if strings.HasPrefix(contentType, "multipart/form-data") {
+		if err := r.ParseMultipartForm(maxSupportImageBytes + 1024*1024); err != nil {
+			return "", nil, fmt.Errorf("invalid multipart form")
+		}
+		message := strings.TrimSpace(r.FormValue("message"))
+		files := make([]supportUpload, 0)
+		for _, headers := range r.MultipartForm.File {
+			for _, header := range headers {
+				if header.Size > maxSupportImageBytes {
+					return "", nil, fmt.Errorf("image must be 10mb or smaller")
+				}
+				file, err := header.Open()
+				if err != nil {
+					return "", nil, fmt.Errorf("failed to read image")
+				}
+				raw, err := io.ReadAll(io.LimitReader(file, maxSupportImageBytes+1))
+				_ = file.Close()
+				if err != nil {
+					return "", nil, fmt.Errorf("failed to read image")
+				}
+				if int64(len(raw)) > maxSupportImageBytes {
+					return "", nil, fmt.Errorf("image must be 10mb or smaller")
+				}
+				mimeType := http.DetectContentType(raw)
+				if !strings.HasPrefix(mimeType, "image/") {
+					return "", nil, fmt.Errorf("only images are allowed")
+				}
+				files = append(files, supportUpload{Name: sanitizeSupportFileName(header.Filename, mimeType), MimeType: mimeType, Bytes: raw})
+			}
+		}
+		return message, files, nil
+	}
+
+	var payload struct {
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		return "", nil, fmt.Errorf("invalid json")
+	}
+	return strings.TrimSpace(payload.Message), nil, nil
+}
+
+func sanitizeSupportFileName(name, mimeType string) string {
+	name = filepath.Base(strings.TrimSpace(name))
+	name = strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '-' || r == '_' {
+			return r
+		}
+		return '_'
+	}, name)
+	if name == "" || name == "." {
+		exts, _ := mime.ExtensionsByType(mimeType)
+		ext := ".png"
+		if len(exts) > 0 {
+			ext = exts[0]
+		}
+		name = "image" + ext
+	}
+	return name
+}
+
+func (h *SupportHandler) saveTicketAttachment(ctx context.Context, ticketID, messageID int64, upload supportUpload) error {
+	dir := filepath.Join(h.storageDir, "tickets", strconv.FormatInt(ticketID, 10), "attachments")
+	if err := os.MkdirAll(dir, 0750); err != nil {
+		return fmt.Errorf("failed to prepare attachment storage")
+	}
+	fileName := fmt.Sprintf("%d_%s", time.Now().UnixNano(), upload.Name)
+	path := filepath.Join(dir, fileName)
+	if err := os.WriteFile(path, upload.Bytes, 0640); err != nil {
+		return fmt.Errorf("failed to save image")
+	}
+	_, err := h.db.ExecContext(
+		ctx,
+		`INSERT INTO support_ticket_attachments (ticket_id, message_id, file_name, mime_type, size_bytes, storage_path, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		ticketID,
+		messageID,
+		upload.Name,
+		upload.MimeType,
+		len(upload.Bytes),
+		path,
+		time.Now().UTC(),
+	)
+	return err
+}
+
+func (h *SupportHandler) loadTicketAttachments(ctx context.Context, ticketID int64) ([]models.TicketAttachment, error) {
+	rows, err := h.db.QueryContext(
+		ctx,
+		`SELECT id, ticket_id, message_id, file_name, mime_type, size_bytes, storage_path, created_at
+		 FROM support_ticket_attachments
+		 WHERE ticket_id = $1
+		 ORDER BY created_at ASC`,
+		ticketID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	attachments := make([]models.TicketAttachment, 0)
+	for rows.Next() {
+		var attachment models.TicketAttachment
+		if err := rows.Scan(&attachment.ID, &attachment.TicketID, &attachment.MessageID, &attachment.FileName, &attachment.MimeType, &attachment.SizeBytes, &attachment.StoragePath, &attachment.CreatedAt); err != nil {
+			return nil, err
+		}
+		attachment.URL = fmt.Sprintf("/support/tickets/%d/attachments/%d", attachment.TicketID, attachment.ID)
+		attachments = append(attachments, attachment)
+	}
+	return attachments, rows.Err()
+}
+
+func (h *SupportHandler) Attachment(w http.ResponseWriter, r *http.Request, attachmentID int64) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	ownerDiscordID := currentDiscordIDFromCookie(r)
+	if ownerDiscordID == "" {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	var ticketID int64
+	var mimeType, path string
+	err := h.db.QueryRowContext(
+		ctx,
+		`SELECT a.ticket_id, a.mime_type, a.storage_path
+		 FROM support_ticket_attachments a
+		 JOIN support_tickets t ON t.id = a.ticket_id
+		 WHERE a.id = $1 AND t.owner_discord_id = $2`,
+		attachmentID,
+		ownerDiscordID,
+	).Scan(&ticketID, &mimeType, &path)
+	_ = ticketID
+	if err == sql.ErrNoRows {
+		writeError(w, http.StatusNotFound, "attachment not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load attachment")
+		return
+	}
+	w.Header().Set("Content-Type", mimeType)
+	http.ServeFile(w, r, path)
+}
+
+func (h *SupportHandler) writeTicketHistoryHTML(ctx context.Context, ticket models.Ticket) error {
+	messages, err := h.loadTicketMessages(ctx, ticket.ID)
+	if err != nil {
+		return err
+	}
+	dir := filepath.Join(h.storageDir, "tickets", strconv.FormatInt(ticket.ID, 10))
+	if err := os.MkdirAll(dir, 0750); err != nil {
+		return err
+	}
+	var b strings.Builder
+	b.WriteString("<!doctype html><html><head><meta charset=\"utf-8\"><title>Support ticket ")
+	b.WriteString(strconv.FormatInt(ticket.ID, 10))
+	b.WriteString("</title><style>body{font-family:Arial,sans-serif;background:#f4f4f4;color:#111}.message{background:#fff;margin:12px 0;padding:12px;border-radius:8px}.meta{color:#666;font-size:12px}.mine{border-left:4px solid #f7c948}.admin{border-left:4px solid #5865f2}img{max-width:420px;border-radius:6px;display:block;margin-top:8px}</style></head><body>")
+	b.WriteString("<h1>Ticket #")
+	b.WriteString(strconv.FormatInt(ticket.ID, 10))
+	b.WriteString(": ")
+	b.WriteString(html.EscapeString(ticket.Subject))
+	b.WriteString("</h1>")
+	for _, message := range messages {
+		className := "message " + html.EscapeString(message.AuthorType)
+		if message.AuthorType == "user" {
+			className = "message mine"
+		}
+		b.WriteString("<div class=\"" + className + "\"><div class=\"meta\">")
+		b.WriteString(html.EscapeString(message.AuthorName))
+		b.WriteString(" · ")
+		b.WriteString(html.EscapeString(message.CreatedAt.Format(time.RFC3339)))
+		b.WriteString("</div><p>")
+		b.WriteString(html.EscapeString(message.Message))
+		b.WriteString("</p>")
+		for _, attachment := range message.Attachments {
+			b.WriteString("<a href=\"attachments/")
+			b.WriteString(html.EscapeString(filepath.Base(attachment.StoragePath)))
+			b.WriteString("\">")
+			b.WriteString(html.EscapeString(attachment.FileName))
+			b.WriteString("</a>")
+		}
+		b.WriteString("</div>")
+	}
+	b.WriteString("</body></html>")
+	return os.WriteFile(filepath.Join(dir, "history.html"), []byte(b.String()), 0640)
+}
+
+func (h *SupportHandler) deleteTicket(ctx context.Context, ticket models.Ticket) error {
+	_, err := h.db.ExecContext(ctx, `DELETE FROM support_tickets WHERE id = $1`, ticket.ID)
+	if err != nil {
+		return err
+	}
+	return os.RemoveAll(filepath.Join(h.storageDir, "tickets", strconv.FormatInt(ticket.ID, 10)))
 }
 
 func (h *SupportHandler) NotifyTicketReply(ctx context.Context, ticketID int64, authorName, message string) {
@@ -734,6 +1111,32 @@ func (h *SupportHandler) sendTicketReplyPush(ctx context.Context, ticket models.
 		}
 		_ = err
 	}
+}
+
+func (h *SupportHandler) writeTicketDeleteConfirmHTML(w http.ResponseWriter, ticket models.Ticket) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	htmlBody := fmt.Sprintf(`<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Подтверждение</title>
+    <style>
+      body{font-family:system-ui;background:#0f1118;color:#fff;margin:0;padding:40px}
+      .card{max-width:760px;margin:0 auto;padding:24px;border-radius:14px;background:#171a26;border:1px solid rgba(255,255,255,.12)}
+      a{display:inline-block;margin-right:10px;margin-top:12px;padding:10px 14px;border-radius:10px;background:#f7c948;color:#0b0b0f;text-decoration:none;font-weight:700}
+      a.secondary{background:rgba(255,255,255,.12);color:#fff}
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Удалить архивный тикет #%d?</h1>
+      <p>Будут удалены история переписки HTML и вложения с носителя.</p>
+      <a href="%s">Да, уверен</a>
+      <a class="secondary" href="%s">Назад</a>
+    </div>
+  </body>
+</html>`, ticket.ID, h.ticketModerationURL(ticket.ID, "delete", ticket.ModerationToken), h.ticketModerationURL(ticket.ID, "archive", ticket.ModerationToken))
+	_, _ = w.Write([]byte(htmlBody))
 }
 
 func (h *SupportHandler) writeTicketModerationHTML(w http.ResponseWriter, ticket models.Ticket, action string) {

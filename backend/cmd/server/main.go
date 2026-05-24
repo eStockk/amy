@@ -49,7 +49,7 @@ func main() {
 	healthHandler := handlers.NewHealthHandler(postgres)
 	playerHandler := handlers.NewPlayerHandler(postgres)
 	newsHandler := handlers.NewNewsHandler(postgres, cfg.TelegramNewsChannel, cfg.DiscordBotToken, cfg.DiscordNewsChannelID)
-	supportHandler := handlers.NewSupportHandler(postgres, cfg.DiscordTicketWebhook, cfg.FrontendURL, cfg.VAPIDPublicKey, cfg.VAPIDPrivateKey, cfg.SupportPushSubject)
+	supportHandler := handlers.NewSupportHandler(postgres, cfg.DiscordTicketWebhook, cfg.FrontendURL, cfg.VAPIDPublicKey, cfg.VAPIDPrivateKey, cfg.SupportPushSubject, cfg.SupportStorageDir)
 	discordMemberSync := handlers.NewDiscordMemberSync(postgres, cfg.DiscordBotToken, cfg.DiscordGuildID, cfg.DiscordTicketChannelID, supportHandler.NotifyTicketReply)
 	serverStatusHandler := handlers.NewServerStatusHandler(cfg.MinecraftServerAddr)
 	discordHandler := handlers.NewDiscordAuthHandler(

@@ -8,10 +8,6 @@
 
       <form @submit.prevent="submit">
         <label>
-          Имя *
-          <input v-model="name" type="text" required />
-        </label>
-        <label>
           Discord ник *
           <input v-model="discordNick" type="text" placeholder="username или display name" required />
         </label>
@@ -96,11 +92,27 @@
               <time>{{ formatDate(item.createdAt) }}</time>
             </div>
             <p>{{ item.message }}</p>
+            <div v-if="item.attachments?.length" class="attachments">
+              <a
+                v-for="attachment in item.attachments"
+                :key="attachment.id"
+                :href="`${config.public.apiBase}${attachment.url}`"
+                target="_blank"
+                rel="noreferrer"
+              >
+                <img v-if="attachment.mimeType.startsWith('image/')" :src="`${config.public.apiBase}${attachment.url}`" :alt="attachment.fileName" />
+                <span>{{ attachment.fileName }}</span>
+              </a>
+            </div>
           </article>
         </div>
 
         <form class="reply" @submit.prevent="sendReply">
-          <textarea v-model="replyText" rows="3" placeholder="Ответить в тикет..." required></textarea>
+          <textarea v-model="replyText" rows="3" placeholder="Ответить в тикет..."></textarea>
+          <label class="file-picker">
+            <input ref="imageInput" type="file" accept="image/*" @change="selectReplyImage" />
+            <span>{{ replyImageName || 'Изображение до 10 MB' }}</span>
+          </label>
           <button type="submit" class="primary" :disabled="replySending">
             {{ replySending ? 'Отправляем...' : 'Ответить' }}
           </button>
@@ -131,8 +143,17 @@ type TicketMessage = {
   authorName: string
   authorDiscordStatus?: string
   message: string
+  attachments?: TicketAttachment[]
   readByUser: boolean
   createdAt: string
+}
+
+type TicketAttachment = {
+  id: number
+  fileName: string
+  mimeType: string
+  sizeBytes: number
+  url: string
 }
 
 const config = useRuntimeConfig()
@@ -140,7 +161,6 @@ const route = useRoute()
 const router = useRouter()
 const { authenticated, user, refresh } = useAuth()
 
-const name = ref('')
 const discordNick = ref('')
 const subject = ref('')
 const category = ref('Общие вопросы')
@@ -153,7 +173,10 @@ const tickets = ref<Ticket[]>([])
 const activeTicketId = ref<number | null>(null)
 const messages = ref<TicketMessage[]>([])
 const replyText = ref('')
+const replyImage = ref<File | null>(null)
+const replyImageName = ref('')
 const replySending = ref(false)
+const imageInput = ref<HTMLInputElement | null>(null)
 const messageList = ref<HTMLElement | null>(null)
 
 const notifyEnabled = ref(false)
@@ -173,7 +196,6 @@ const submit = async () => {
       method: 'POST',
       credentials: 'include',
       body: {
-        name: name.value,
         discordNick: discordNick.value,
         subject: subject.value,
         category: category.value,
@@ -181,7 +203,6 @@ const submit = async () => {
       }
     })
     status.value = 'Тикет отправлен. Чат открыт справа.'
-    name.value = ''
     subject.value = ''
     message.value = ''
     await loadTickets(response.ticket.id)
@@ -232,24 +253,48 @@ const loadMessages = async () => {
 }
 
 const sendReply = async () => {
-  if (!activeTicketId.value || !replyText.value.trim()) return
+  if (!activeTicketId.value || (!replyText.value.trim() && !replyImage.value)) return
   replySending.value = true
   try {
+    const body = new FormData()
+    body.append('message', replyText.value)
+    if (replyImage.value) body.append('image', replyImage.value)
     const response = await $fetch<{ messages: TicketMessage[] }>(
       `${config.public.apiBase}/support/tickets/${activeTicketId.value}/messages`,
       {
         method: 'POST',
         credentials: 'include',
-        body: { message: replyText.value }
+        body
       }
     )
     replyText.value = ''
+    clearReplyImage()
     messages.value = response.messages
     await nextTick()
     messageList.value?.scrollTo({ top: messageList.value.scrollHeight, behavior: 'smooth' })
   } finally {
     replySending.value = false
   }
+}
+
+const selectReplyImage = (event: Event) => {
+  const file = (event.target as HTMLInputElement).files?.[0]
+  if (!file) {
+    clearReplyImage()
+    return
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    clearReplyImage()
+    return
+  }
+  replyImage.value = file
+  replyImageName.value = file.name
+}
+
+const clearReplyImage = () => {
+  replyImage.value = null
+  replyImageName.value = ''
+  if (imageInput.value) imageInput.value.value = ''
 }
 
 const syncNotificationSettings = async () => {
@@ -379,7 +424,6 @@ onMounted(async () => {
   restoreNotificationPrefs()
   await refresh()
   if (user.value) {
-    name.value = user.value.displayName || user.value.username || ''
     discordNick.value = user.value.username || user.value.displayName || ''
   }
   await loadTickets()
@@ -447,7 +491,17 @@ textarea {
 }
 
 textarea {
-  resize: vertical;
+  resize: none;
+}
+
+select {
+  appearance: none;
+  background-color: rgba(30, 32, 42, 0.96);
+}
+
+select option {
+  background: #1e202a;
+  color: #f7f4e8;
 }
 
 .primary,
@@ -609,8 +663,46 @@ textarea {
 }
 
 .reply {
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 240px) auto;
   align-items: end;
+}
+
+.file-picker {
+  min-height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+}
+
+.file-picker input {
+  display: none;
+}
+
+.file-picker span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachments {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.attachments a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.attachments img {
+  max-width: min(320px, 100%);
+  max-height: 260px;
+  object-fit: contain;
+  border-radius: 8px;
 }
 
 @media (max-width: 1024px) {

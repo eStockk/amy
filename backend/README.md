@@ -20,6 +20,7 @@ Copy `.env.example` to `.env` and set values:
 - `DISCORD_BOT_TOKEN` and `DISCORD_GUILD_ID` - optional Discord bot access for member role, presence and support reply sync
 - `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` - optional browser push keys for support notifications
 - `SUPPORT_PUSH_SUBJECT` - contact subject for Web Push, for example `mailto:support@amyworld.ru`
+- `SUPPORT_STORAGE_DIR` - directory for support ticket HTML history and uploaded images
 
 ## Run
 ```bash
@@ -43,4 +44,5 @@ The backend creates or updates its PostgreSQL tables on startup.
 - `POST /api/support/tickets` - create support ticket
 - `GET /api/support/tickets/{id}/messages` - load ticket chat
 - `POST /api/support/tickets/{id}/messages` - add a user message to ticket chat
+- `GET /api/support/tickets/{id}/attachments/{attachmentId}` - load a saved ticket image
 - `GET|POST|DELETE /api/support/notifications` - manage browser push notification subscription

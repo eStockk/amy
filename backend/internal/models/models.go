@@ -29,17 +29,31 @@ type Ticket struct {
 	DiscordChannelID string     `json:"-"`
 	UnreadAdminCount int        `json:"unreadAdminCount"`
 	ResolvedAt       *time.Time `json:"resolvedAt,omitempty"`
+	ArchivedAt       *time.Time `json:"archivedAt,omitempty"`
 	CreatedAt        time.Time  `json:"createdAt"`
 }
 
 type TicketMessage struct {
-	ID                  int64     `json:"id"`
-	TicketID            int64     `json:"ticketId"`
-	AuthorType          string    `json:"authorType"`
-	AuthorName          string    `json:"authorName"`
-	AuthorDiscordID     string    `json:"authorDiscordId,omitempty"`
-	AuthorDiscordStatus string    `json:"authorDiscordStatus,omitempty"`
-	Message             string    `json:"message"`
-	ReadByUser          bool      `json:"readByUser"`
-	CreatedAt           time.Time `json:"createdAt"`
+	ID                  int64              `json:"id"`
+	TicketID            int64              `json:"ticketId"`
+	AuthorType          string             `json:"authorType"`
+	AuthorName          string             `json:"authorName"`
+	AuthorDiscordID     string             `json:"authorDiscordId,omitempty"`
+	AuthorDiscordStatus string             `json:"authorDiscordStatus,omitempty"`
+	Message             string             `json:"message"`
+	Attachments         []TicketAttachment `json:"attachments,omitempty"`
+	ReadByUser          bool               `json:"readByUser"`
+	CreatedAt           time.Time          `json:"createdAt"`
+}
+
+type TicketAttachment struct {
+	ID          int64     `json:"id"`
+	TicketID    int64     `json:"ticketId"`
+	MessageID   int64     `json:"messageId"`
+	FileName    string    `json:"fileName"`
+	MimeType    string    `json:"mimeType"`
+	SizeBytes   int64     `json:"sizeBytes"`
+	URL         string    `json:"url"`
+	StoragePath string    `json:"-"`
+	CreatedAt   time.Time `json:"createdAt"`
 }
