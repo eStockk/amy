@@ -5,7 +5,10 @@
     <section class="premium">
       <div class="premium-copy">
         <p class="eyebrow">Подписка</p>
-        <h1>Premium</h1>
+        <div class="premium-title">
+          <h1>Premium</h1>
+          <span class="price premium-price">197 ₽</span>
+        </div>
         <p class="lead">Единый статус для игроков, которым нужны комфорт, косметика и ускоренное развитие персонажа.</p>
       </div>
 
@@ -28,6 +31,7 @@
           :style="{ '--product-image': `url(${item.image})` }"
         >
           <span class="product-type">{{ item.type }}</span>
+          <span class="price">{{ item.price }}</span>
           <h3>{{ item.title }}</h3>
           <p>{{ item.text }}</p>
         </article>
@@ -48,24 +52,28 @@ const products = [
     type: 'Учебник',
     title: 'Академический учебник Воина',
     text: 'Даёт очки обучения для боевых навыков и ускоряет развитие персонажа в силовой ветке.',
+    price: '50 ₽',
     image: fighterBookImage
   },
   {
     type: 'Учебник',
     title: 'Академический учебник Кузнеца',
     text: 'Подходит для ремесленного прогресса, кузнечного RP и развития мастерской специализации.',
+    price: '50 ₽',
     image: smithBookImage
   },
   {
     type: 'Учебник',
     title: 'Академический учебник Мага',
     text: 'Помогает в магической специализации и открывает путь к более редким знаниям.',
+    price: '50 ₽',
     image: mageBookImage
   },
   {
     type: 'Набор',
     title: 'Набор строителя',
     text: 'Комплект для игроков, которые активно развивают постройки, интерьер и поселения.',
+    price: '100 ₽',
     image: buildKitImage
   }
 ]
@@ -106,6 +114,13 @@ p {
 
 h1 {
   font-size: 38px;
+}
+
+.premium-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .lead,
@@ -190,6 +205,20 @@ h1 {
   border: 1px solid rgba(255, 255, 255, 0.16);
   background: rgba(10, 10, 14, 0.58);
   font-size: 12px;
+}
+
+.price {
+  width: max-content;
+  padding: 6px 10px;
+  border-radius: 8px;
+  color: #0b0b0f;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  font-weight: 800;
+  box-shadow: 0 10px 22px rgba(228, 94, 56, 0.26);
+}
+
+.premium-price {
+  font-size: 16px;
 }
 
 @media (max-width: 1100px) {

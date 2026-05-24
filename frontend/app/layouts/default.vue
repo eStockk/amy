@@ -6,18 +6,22 @@
       <main class="app-main">
         <slot />
       </main>
+      <BaseFooter v-if="showFooter" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import BaseSidebar from '~/components/BaseSidebar.vue'
+import BaseFooter from '~/components/BaseFooter.vue'
 import TopBar from '~/components/TopBar.vue'
 import { useAuth } from '~/composables/useAuth'
 
 const config = useRuntimeConfig()
+const route = useRoute()
 const router = useRouter()
 const { authenticated, user } = useAuth()
+const showFooter = computed(() => !route.path.startsWith('/u/'))
 
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 let stopAuthWatch: (() => void) | null = null
@@ -117,7 +121,7 @@ onBeforeUnmount(() => {
 }
 
 .app-main {
-  padding: 0 24px 0;
+  padding: 0 24px 40px;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -129,7 +133,7 @@ onBeforeUnmount(() => {
   }
 
   .app-main {
-    padding: 0;
+    padding: 0 0 32px;
   }
 }
 

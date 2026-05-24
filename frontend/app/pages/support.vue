@@ -37,7 +37,7 @@
       <h3>Дополнительно</h3>
       <p>Для быстрых ответов используйте Discord.</p>
       <div class="links">
-        <a href="#">Discord</a>
+        <a href="https://discord.gg/wQc3kAZJWB" target="_blank" rel="noreferrer">Discord</a>
       </div>
     </div>
   </div>
