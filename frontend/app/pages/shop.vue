@@ -6,13 +6,13 @@
       <div class="premium-copy">
         <p class="eyebrow">Подписка</p>
         <h1>Premium</h1>
-        <p class="lead">Единый статус для игроков, которым нужны удобство, косметика и персонализация.</p>
+        <p class="lead">Единый статус для игроков, которым нужны комфорт, косметика и ускоренное развитие персонажа.</p>
       </div>
 
       <ul class="premium-list">
-        <li>Ускоренная прокачка</li>
+        <li>Ускоренная прокачка ремёсел</li>
         <li>Кастомные сообщения о входе и выходе</li>
-        <li>Косметические элементы</li>
+        <li>Косметические элементы и приятные бонусы</li>
       </ul>
 
       <button class="primary" type="button">Оформить Premium</button>
@@ -24,9 +24,8 @@
         <article
           v-for="item in products"
           :key="item.title"
-          class="product"
-          :class="{ 'product-image': item.image }"
-          :style="item.image ? { '--product-image': `url(${item.image})` } : undefined"
+          class="product product-image"
+          :style="{ '--product-image': `url(${item.image})` }"
         >
           <span class="product-type">{{ item.type }}</span>
           <h3>{{ item.title }}</h3>
@@ -39,28 +38,34 @@
 
 <script setup lang="ts">
 import SectionTitle from '~/components/SectionTitle.vue'
+import fighterBookImage from '~/images/shop/fighter_book.png'
+import smithBookImage from '~/images/shop/smith_book.png'
+import mageBookImage from '~/images/shop/mage_book.png'
 import buildKitImage from '~/images/shop/kit_build.png'
 
 const products = [
   {
     type: 'Учебник',
     title: 'Академический учебник Воина',
-    text: 'Материал для развития боевых навыков персонажа.'
+    text: 'Даёт очки обучения для боевых навыков и ускоряет развитие персонажа в силовой ветке.',
+    image: fighterBookImage
   },
   {
     type: 'Учебник',
     title: 'Академический учебник Кузнеца',
-    text: 'Подходит для ремесленного прогресса и кузнечного RP.'
+    text: 'Подходит для ремесленного прогресса, кузнечного RP и развития мастерской специализации.',
+    image: smithBookImage
   },
   {
     type: 'Учебник',
     title: 'Академический учебник Мага',
-    text: 'Предмет для магической специализации и косметического отыгрыша.'
+    text: 'Помогает в магической специализации и открывает путь к более редким знаниям.',
+    image: mageBookImage
   },
   {
     type: 'Набор',
-    title: 'Набор "Строителя"',
-    text: 'Комплект для игроков, которые активно развивают постройки и декор.',
+    title: 'Набор строителя',
+    text: 'Комплект для игроков, которые активно развивают постройки, интерьер и поселения.',
     image: buildKitImage
   }
 ]
@@ -147,14 +152,25 @@ h1 {
 .product {
   position: relative;
   display: grid;
-  align-content: start;
+  align-content: end;
   gap: 10px;
-  min-height: 178px;
+  min-height: 260px;
   padding: 18px;
   border-radius: var(--radius-md);
-  border: 1px solid var(--stroke);
-  background: var(--panel);
+  border: 1px solid rgba(228, 94, 56, 0.28);
   overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.product::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(180deg, rgba(10, 10, 14, 0.16), rgba(10, 10, 14, 0.88)),
+    var(--product-image);
+  background-position: center, center;
+  background-size: cover, cover;
+  transform: scale(1.02);
 }
 
 .product > * {
@@ -162,23 +178,17 @@ h1 {
   z-index: 1;
 }
 
-.product-image {
-  min-height: 230px;
-  border-color: rgba(228, 94, 56, 0.28);
-  background-image: linear-gradient(90deg, rgba(15, 15, 20, 0.95), rgba(15, 15, 20, 0.78) 52%, rgba(15, 15, 20, 0.28)),
-    var(--product-image);
-  background-position: center, center;
-  background-size: cover, cover;
-  box-shadow: var(--shadow);
+.product h3 {
+  font-size: 22px;
 }
 
 .product-type {
   width: max-content;
   padding: 4px 8px;
   border-radius: 999px;
-  color: var(--muted);
-  border: 1px solid var(--stroke);
-  background: rgba(10, 10, 14, 0.46);
+  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(10, 10, 14, 0.58);
   font-size: 12px;
 }
 
@@ -206,10 +216,8 @@ h1 {
     width: 100%;
   }
 
-  .product-image {
-    background-image: linear-gradient(180deg, rgba(15, 15, 20, 0.88), rgba(15, 15, 20, 0.66)),
-      var(--product-image);
-    background-position: center, center;
+  .product {
+    min-height: 230px;
   }
 }
 </style>
