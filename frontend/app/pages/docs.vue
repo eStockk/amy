@@ -9,9 +9,9 @@
       :style="{ '--panel-image': `url(${docsImage})` }"
     >
       <div class="note-grid">
-        <span>Зайдите на сервер и получите код привязки.</span>
+        <span>Зайдите на сервер по адресу из главной страницы.</span>
         <span>Авторизуйтесь через Discord на сайте.</span>
-        <span>Введите код в профиле, чтобы связать Minecraft и Discord.</span>
+        <span>После отправки RP-заявки следите за статусом в профиле.</span>
       </div>
     </ContentPanel>
 

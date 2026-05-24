@@ -20,7 +20,6 @@ export type AuthUser = {
   email?: string
   avatar?: string
   avatarUrl?: string
-  linkedMinecraft?: string
   rpFirstName?: string
   rpLastName?: string
   profileUrl?: string
@@ -84,15 +83,6 @@ export function useAuth() {
     await refresh()
   }
 
-  const verifyMinecraftCode = async (code: string) => {
-    await $fetch(`${config.public.apiBase}/auth/verify-minecraft`, {
-      method: 'POST',
-      credentials: 'include',
-      body: { code }
-    })
-    await refresh()
-  }
-
   const logout = async () => {
     await $fetch(`${config.public.apiBase}/auth/logout`, {
       method: 'POST',
@@ -111,7 +101,6 @@ export function useAuth() {
     profilePath,
     submitRPApplication,
     deleteRPApplication,
-    verifyMinecraftCode,
     logout
   }
 }

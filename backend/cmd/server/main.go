@@ -49,9 +49,9 @@ func main() {
 	healthHandler := handlers.NewHealthHandler(postgres)
 	playerHandler := handlers.NewPlayerHandler(postgres)
 	newsHandler := handlers.NewNewsHandler(postgres, cfg.TelegramNewsChannel, cfg.DiscordBotToken, cfg.DiscordNewsChannelID)
-	discordMemberSync := handlers.NewDiscordMemberSync(postgres, cfg.DiscordBotToken, cfg.DiscordGuildID)
+	supportHandler := handlers.NewSupportHandler(postgres, cfg.DiscordTicketWebhook, cfg.FrontendURL, cfg.VAPIDPublicKey, cfg.VAPIDPrivateKey, cfg.SupportPushSubject)
+	discordMemberSync := handlers.NewDiscordMemberSync(postgres, cfg.DiscordBotToken, cfg.DiscordGuildID, cfg.DiscordTicketChannelID, supportHandler.NotifyTicketReply)
 	serverStatusHandler := handlers.NewServerStatusHandler(cfg.MinecraftServerAddr)
-	supportHandler := handlers.NewSupportHandler(postgres, cfg.DiscordTicketWebhook, cfg.FrontendURL)
 	discordHandler := handlers.NewDiscordAuthHandler(
 		postgres,
 		cfg.DiscordClientID,
@@ -61,8 +61,6 @@ func main() {
 		cfg.DiscordTicketWebhook,
 		cfg.DiscordRPWebhook,
 		cfg.RPModeratorIDs,
-		cfg.MinecraftServerToken,
-		cfg.MinecraftServerAddr,
 	)
 
 	syncCtx, syncCancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -84,12 +82,10 @@ func main() {
 	mux.HandleFunc("/api/auth/me", discordHandler.Me)
 	mux.HandleFunc("/api/auth/logout", discordHandler.Logout)
 	mux.HandleFunc("/api/auth/presence", discordHandler.PresencePing)
-	mux.HandleFunc("/api/auth/verify-minecraft", discordHandler.VerifyMinecraftCode)
 	mux.HandleFunc("/api/profiles/", discordHandler.PublicProfile)
 	mux.HandleFunc("/api/rp/applications", discordHandler.SubmitRPApplication)
 	mux.HandleFunc("/api/rp/applications/", discordHandler.ModerateRPApplication)
-	mux.HandleFunc("/api/minecraft/verification-code", discordHandler.RequestMinecraftVerificationCode)
-	mux.HandleFunc("/api/minecraft/rp-name", discordHandler.UpdateMineRPName)
+	mux.HandleFunc("/api/support/notifications", supportHandler.Notifications)
 	mux.HandleFunc("/api/support/tickets", supportHandler.Create)
 	mux.HandleFunc("/api/support/tickets/", supportHandler.Moderate)
 
@@ -161,7 +157,7 @@ func withCORS(allowedOrigin string, next http.Handler) http.Handler {
 		}
 		w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
-		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PATCH,OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type,X-Server-Token")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

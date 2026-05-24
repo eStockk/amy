@@ -25,8 +25,6 @@
           <p v-if="isOwner && user?.email" class="muted email">{{ user.email }}</p>
 
           <div class="chips">
-            <span class="chip" v-if="profile.linkedMinecraft">Minecraft: {{ profile.linkedMinecraft }}</span>
-            <span class="chip" v-else>Minecraft не верифицирован</span>
             <span class="chip" v-if="fullRPName !== 'Не указан'">RP: {{ fullRPName }}</span>
             <span class="chip" v-if="profile.joinedAt">На сайте с {{ formatDate(profile.joinedAt, true) }}</span>
             <span class="chip" v-else>Дата регистрации обновится после входа</span>
@@ -62,43 +60,15 @@
       <div class="right-col">
         <section class="panel info-grid">
           <article class="info-card highlight">
-            <p class="label">Аккаунт Minecraft</p>
-            <strong>{{ profile.linkedMinecraft || 'Ожидает верификации' }}</strong>
-            <p class="muted">После успешного ввода кода аккаунт закрепляется за вашим Discord-профилем.</p>
-          </article>
-
-          <article class="info-card">
             <p class="label">RP имя и фамилия</p>
             <strong>{{ fullRPName }}</strong>
-            <p class="muted">Сервер обновляет эти поля автоматически через API после настройки в MineRP.</p>
+            <p class="muted">Эти поля обновляются по данным RP-заявки и профиля Discord.</p>
           </article>
-        </section>
-
-        <section v-if="isOwner" class="panel verify-card">
-          <div class="section-head">
-            <h3>Шаг 1: Верификация с сервером</h3>
-            <span class="badge">Код из кика</span>
-          </div>
-          <p class="muted">Введите код, который вы получили после первого входа на сервер.</p>
-
-          <form class="row" @submit.prevent="submitVerificationCode">
-            <input
-              v-model.trim="verificationCode"
-              type="text"
-              maxlength="16"
-              placeholder="Например: A4K8M2Q9"
-              required
-            />
-            <button class="primary" type="submit" :disabled="verifyPending">
-              {{ verifyPending ? 'Проверяем...' : 'Подтвердить код' }}
-            </button>
-          </form>
-          <p v-if="verifyMessage" class="status" :class="{ error: verifyError }">{{ verifyMessage }}</p>
         </section>
 
         <section v-if="isOwner" class="panel application-card">
           <div class="section-head">
-            <h3>Шаг 2: RP-заявка</h3>
+            <h3>RP-заявка</h3>
             <span class="badge">{{ progressCompleted }}/12</span>
           </div>
 
@@ -218,7 +188,6 @@ type PublicProfile = {
   username: string
   displayName: string
   avatarUrl?: string
-  linkedMinecraft?: string
   rpFirstName?: string
   rpLastName?: string
   joinedAt?: string
@@ -239,7 +208,6 @@ const {
   refresh,
   submitRPApplication,
   deleteRPApplication,
-  verifyMinecraftCode,
   logout
 } = useAuth()
 
@@ -251,11 +219,6 @@ const profileId = computed(() => String(route.params.id || '').trim())
 const isOwner = computed(() => Boolean(authenticated.value && user.value?.id === profile.value?.id))
 
 const applicationSummary = computed(() => (isOwner.value ? user.value?.rpApplication : undefined))
-
-const verificationCode = ref('')
-const verifyPending = ref(false)
-const verifyMessage = ref('')
-const verifyError = ref(false)
 
 const submitPending = ref(false)
 const submitMessage = ref('')
@@ -360,7 +323,6 @@ const progressPercent = computed(() => Math.round((progressCompleted.value / 12)
 const fillFromCurrentState = (authUser?: AuthUser | null) => {
   if (!authUser) return
 
-  if (authUser.linkedMinecraft) form.nickname = authUser.linkedMinecraft
   if (authUser.rpApplication?.nickname) form.nickname = authUser.rpApplication.nickname
   if (authUser.rpApplication?.rpName) form.rpName = authUser.rpApplication.rpName
   if (authUser.rpApplication?.birthDate) form.birthDate = authUser.rpApplication.birthDate
@@ -429,7 +391,6 @@ const loadProfile = async () => {
     if (isOwner.value && user.value) {
       profile.value = {
         ...response.profile,
-        linkedMinecraft: user.value.linkedMinecraft || response.profile.linkedMinecraft,
         rpFirstName: user.value.rpFirstName || response.profile.rpFirstName,
         rpLastName: user.value.rpLastName || response.profile.rpLastName,
         joinedAt: response.profile.joinedAt
@@ -444,32 +405,6 @@ const loadProfile = async () => {
     profile.value = null
   } finally {
     pending.value = false
-  }
-}
-
-const submitVerificationCode = async () => {
-  verifyMessage.value = ''
-  verifyError.value = false
-
-  const code = verificationCode.value.trim().toUpperCase()
-  if (code.length < 6) {
-    verifyError.value = true
-    verifyMessage.value = 'Введите корректный код верификации.'
-    return
-  }
-
-  verifyPending.value = true
-  try {
-    await verifyMinecraftCode(code)
-    verifyMessage.value = 'Код принят, аккаунт сервера привязан.'
-    verificationCode.value = ''
-    await loadProfile()
-  } catch (error: unknown) {
-    verifyError.value = true
-    const message = (error as { data?: { error?: string } })?.data?.error
-    verifyMessage.value = message || 'Не удалось подтвердить код. Проверьте его и повторите попытку.'
-  } finally {
-    verifyPending.value = false
   }
 }
 
@@ -682,7 +617,6 @@ watch(rpModalOpen, (opened) => {
 
 .identity-card,
 .summary-card,
-.verify-card,
 .application-card {
   padding: 14px;
 }
@@ -808,7 +742,6 @@ h1 {
   font-family: 'Neue Machine', 'Montserrat', sans-serif;
 }
 
-.verify-card,
 .application-card {
   display: grid;
   gap: 12px;
@@ -1020,7 +953,6 @@ textarea {
 
   .identity-card,
   .summary-card,
-  .verify-card,
   .application-card,
   .info-grid {
     padding: 12px;

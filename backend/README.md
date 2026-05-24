@@ -16,8 +16,10 @@ Copy `.env.example` to `.env` and set values:
 - `DISCORD_TICKET_WEBHOOK` - webhook for support tickets
 - `DISCORD_RP_WEBHOOK` - webhook for RP applications moderation channel
 - `DISCORD_RP_MODERATOR_IDS` - comma-separated Discord IDs allowed to moderate RP applications
-- `MINECRAFT_SERVER_TOKEN` - shared secret for Minecraft server <-> website API
-- `DISCORD_BOT_TOKEN` and `DISCORD_GUILD_ID` - optional Discord bot access for member role sync into Grafana
+- `DISCORD_TICKET_CHANNEL_ID` - Discord channel ID where admins reply to support tickets
+- `DISCORD_BOT_TOKEN` and `DISCORD_GUILD_ID` - optional Discord bot access for member role, presence and support reply sync
+- `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` - optional browser push keys for support notifications
+- `SUPPORT_PUSH_SUBJECT` - contact subject for Web Push, for example `mailto:support@amyworld.ru`
 
 ## Run
 ```bash
@@ -34,9 +36,11 @@ The backend creates or updates its PostgreSQL tables on startup.
 - `GET /api/auth/discord/callback` - OAuth callback
 - `GET /api/auth/me` - current authenticated user
 - `POST /api/auth/logout` - logout
-- `POST /api/auth/verify-minecraft` - verify website account with one-time code
 - `POST /api/rp/applications` - submit RP application
 - `DELETE /api/rp/applications/{id}` - delete own RP ticket (site + Discord message)
 - `GET /api/rp/applications/{id}/moderate?action=accept|call|cancel|reconsider&token=...` - moderation endpoint for Discord buttons
-- `POST /api/minecraft/verification-code` - generate/reuse verification code (server token required)
-- `POST /api/minecraft/rp-name` - sync RP first/last name from server plugin (server token required)
+- `GET /api/support/tickets` - list current user's support tickets
+- `POST /api/support/tickets` - create support ticket
+- `GET /api/support/tickets/{id}/messages` - load ticket chat
+- `POST /api/support/tickets/{id}/messages` - add a user message to ticket chat
+- `GET|POST|DELETE /api/support/notifications` - manage browser push notification subscription

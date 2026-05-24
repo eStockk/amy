@@ -17,10 +17,12 @@ import (
 )
 
 type DiscordMemberSync struct {
-	db         *sql.DB
-	botToken   string
-	guildID    string
-	httpClient *http.Client
+	db                 *sql.DB
+	botToken           string
+	guildID            string
+	ticketChannelID    string
+	notifySupportReply func(context.Context, int64, string, string)
+	httpClient         *http.Client
 }
 
 type discordGuildRole struct {
@@ -59,6 +61,25 @@ type discordGatewayGuildCreate struct {
 	Presences []discordGatewayPresence `json:"presences"`
 }
 
+type discordGatewayMessageCreate struct {
+	ID        string `json:"id"`
+	ChannelID string `json:"channel_id"`
+	Content   string `json:"content"`
+	Author    struct {
+		ID         string `json:"id"`
+		Username   string `json:"username"`
+		GlobalName string `json:"global_name"`
+		Bot        bool   `json:"bot"`
+	} `json:"author"`
+	Member *struct {
+		Nick string `json:"nick"`
+	} `json:"member"`
+	MessageReference *struct {
+		MessageID string `json:"message_id"`
+		ChannelID string `json:"channel_id"`
+	} `json:"message_reference"`
+}
+
 const (
 	discordGatewayOpDispatch     = 0
 	discordGatewayOpHeartbeat    = 1
@@ -69,13 +90,17 @@ const (
 	discordGatewayIntentGuilds         = 1 << 0
 	discordGatewayIntentGuildMembers   = 1 << 1
 	discordGatewayIntentGuildPresences = 1 << 8
+	discordGatewayIntentGuildMessages  = 1 << 9
+	discordGatewayIntentMessageContent = 1 << 15
 )
 
-func NewDiscordMemberSync(db *sql.DB, botToken, guildID string) *DiscordMemberSync {
+func NewDiscordMemberSync(db *sql.DB, botToken, guildID, ticketChannelID string, notifySupportReply func(context.Context, int64, string, string)) *DiscordMemberSync {
 	return &DiscordMemberSync{
-		db:       db,
-		botToken: strings.TrimSpace(botToken),
-		guildID:  strings.TrimSpace(guildID),
+		db:                 db,
+		botToken:           strings.TrimSpace(botToken),
+		guildID:            strings.TrimSpace(guildID),
+		ticketChannelID:    strings.TrimSpace(ticketChannelID),
+		notifySupportReply: notifySupportReply,
 		httpClient: &http.Client{
 			Timeout: 15 * time.Second,
 		},
@@ -284,6 +309,11 @@ func (s *DiscordMemberSync) listenPresenceGateway(ctx context.Context) error {
 					log.Printf("discord guild presence snapshot failed: %v", err)
 				}
 			}
+			if message.T == "MESSAGE_CREATE" {
+				if err := s.handleSupportTicketReply(ctx, message.D); err != nil && ctx.Err() == nil {
+					log.Printf("discord support reply sync failed: %v", err)
+				}
+			}
 		case discordGatewayOpHeartbeat:
 			if err := writeGatewayHeartbeat(conn, &writeMu, lastSequence.Load()); err != nil {
 				return err
@@ -298,7 +328,7 @@ func (s *DiscordMemberSync) identifyGateway(conn *websocket.Conn, writeMu *sync.
 		"op": discordGatewayOpIdentify,
 		"d": map[string]any{
 			"token":   s.botToken,
-			"intents": discordGatewayIntentGuilds | discordGatewayIntentGuildMembers | discordGatewayIntentGuildPresences,
+			"intents": discordGatewayIntentGuilds | discordGatewayIntentGuildMembers | discordGatewayIntentGuildPresences | discordGatewayIntentGuildMessages | discordGatewayIntentMessageContent,
 			"properties": map[string]string{
 				"os":      "linux",
 				"browser": "amy-world",
@@ -381,6 +411,76 @@ func (s *DiscordMemberSync) handleGuildCreate(ctx context.Context, raw json.RawM
 		}
 	}
 	return nil
+}
+
+func (s *DiscordMemberSync) handleSupportTicketReply(ctx context.Context, raw json.RawMessage) error {
+	var message discordGatewayMessageCreate
+	if err := json.Unmarshal(raw, &message); err != nil {
+		return err
+	}
+	if message.Author.Bot || strings.TrimSpace(message.Author.ID) == "" || strings.TrimSpace(message.Content) == "" {
+		return nil
+	}
+	if s.ticketChannelID != "" && message.ChannelID != s.ticketChannelID {
+		return nil
+	}
+	if message.MessageReference == nil || strings.TrimSpace(message.MessageReference.MessageID) == "" {
+		return nil
+	}
+
+	var ticketID int64
+	var ticketOwner string
+	err := s.db.QueryRowContext(
+		ctx,
+		`SELECT id, owner_discord_id
+		 FROM support_tickets
+		 WHERE discord_message_id = $1
+		 LIMIT 1`,
+		strings.TrimSpace(message.MessageReference.MessageID),
+	).Scan(&ticketID, &ticketOwner)
+	if err == sql.ErrNoRows {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	authorName := strings.TrimSpace(message.MemberNick())
+	status := "unknown"
+	_ = s.db.QueryRowContext(ctx, `SELECT COALESCE(NULLIF(discord_status, ''), 'unknown') FROM discord_member_states WHERE discord_id = $1`, message.Author.ID).Scan(&status)
+
+	result, err := s.db.ExecContext(
+		ctx,
+		`INSERT INTO support_ticket_messages
+		 (ticket_id, author_type, author_name, author_discord_id, author_discord_status, message, discord_message_id, read_by_user, created_at)
+		 VALUES ($1, 'admin', $2, $3, $4, $5, $6, FALSE, $7)
+		 ON CONFLICT (discord_message_id) WHERE discord_message_id <> '' DO NOTHING`,
+		ticketID,
+		authorName,
+		message.Author.ID,
+		status,
+		strings.TrimSpace(message.Content),
+		strings.TrimSpace(message.ID),
+		time.Now().UTC(),
+	)
+	_ = ticketOwner
+	if err != nil {
+		return err
+	}
+	if affected, _ := result.RowsAffected(); affected > 0 && s.notifySupportReply != nil {
+		s.notifySupportReply(ctx, ticketID, authorName, strings.TrimSpace(message.Content))
+	}
+	return nil
+}
+
+func (m discordGatewayMessageCreate) MemberNick() string {
+	if m.Member != nil && strings.TrimSpace(m.Member.Nick) != "" {
+		return strings.TrimSpace(m.Member.Nick)
+	}
+	if strings.TrimSpace(m.Author.GlobalName) != "" {
+		return strings.TrimSpace(m.Author.GlobalName)
+	}
+	return strings.TrimSpace(m.Author.Username)
 }
 
 func normalizeDiscordStatus(status string) string {

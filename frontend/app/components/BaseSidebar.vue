@@ -90,9 +90,6 @@ const profileSubtitle = computed(() => {
   if (user.value?.rpApplication?.status === 'pending') {
     return 'RP-заявка на рассмотрении'
   }
-  if (user.value?.linkedMinecraft) {
-    return `Minecraft: ${user.value.linkedMinecraft}`
-  }
   return 'Личный кабинет'
 })
 

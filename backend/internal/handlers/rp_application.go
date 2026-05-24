@@ -58,7 +58,8 @@ type rpApplicationRequest struct {
 }
 
 type discordWebhookMessage struct {
-	ID string `json:"id"`
+	ID        string `json:"id"`
+	ChannelID string `json:"channel_id"`
 }
 
 type sqlScanner interface {
@@ -336,7 +337,6 @@ func (h *DiscordAuthHandler) DeleteRPApplication(w http.ResponseWriter, r *http.
 		return
 	}
 
-	_, _ = h.db.ExecContext(ctx, `DELETE FROM minecraft_verification_codes WHERE application_id = $1`, application.ID)
 	_, _ = h.db.ExecContext(ctx, `UPDATE discord_users SET acceptance_status = 'pending', updated_at = $1 WHERE discord_id = $2 AND acceptance_status <> 'accepted'`, time.Now().UTC(), user.DiscordID)
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})

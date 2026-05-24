@@ -16,16 +16,14 @@ import (
 )
 
 type DiscordAuthHandler struct {
-	db                   *sql.DB
-	clientID             string
-	clientSecret         string
-	redirectURL          string
-	frontendURL          string
-	ticketWebhookURL     string
-	rpWebhookURL         string
-	rpModeratorIDs       map[string]struct{}
-	minecraftServerToken string
-	minecraftServerAddr  string
+	db               *sql.DB
+	clientID         string
+	clientSecret     string
+	redirectURL      string
+	frontendURL      string
+	ticketWebhookURL string
+	rpWebhookURL     string
+	rpModeratorIDs   map[string]struct{}
 }
 
 type discordTokenResponse struct {
@@ -49,11 +47,9 @@ type discordUserDoc struct {
 	GlobalName           string     `json:"globalName"`
 	Email                string     `json:"email"`
 	Avatar               string     `json:"avatar"`
-	LinkedMinecraft      string     `json:"linkedMinecraft,omitempty"`
 	RPFirstName          string     `json:"rpFirstName,omitempty"`
 	RPLastName           string     `json:"rpLastName,omitempty"`
 	AcceptanceStatus     string     `json:"acceptanceStatus"`
-	MinecraftVerifiedAt  *time.Time `json:"minecraftVerifiedAt,omitempty"`
 	LastSeenAt           *time.Time `json:"lastSeenAt,omitempty"`
 	PresenceActive       bool       `json:"presenceActive,omitempty"`
 	FirstAuthenticatedAt *time.Time `json:"-"`
@@ -73,7 +69,6 @@ type discordUserOut struct {
 	Email              string                   `json:"email"`
 	Avatar             string                   `json:"avatar"`
 	AvatarURL          string                   `json:"avatarUrl"`
-	LinkedMinecraft    string                   `json:"linkedMinecraft,omitempty"`
 	RPFirstName        string                   `json:"rpFirstName,omitempty"`
 	RPLastName         string                   `json:"rpLastName,omitempty"`
 	ProfileURL         string                   `json:"profileUrl"`
@@ -87,15 +82,14 @@ type publicProfileResponse struct {
 }
 
 type publicProfile struct {
-	ID              string     `json:"id"`
-	Username        string     `json:"username"`
-	DisplayName     string     `json:"displayName"`
-	AvatarURL       string     `json:"avatarUrl"`
-	LinkedMinecraft string     `json:"linkedMinecraft,omitempty"`
-	RPFirstName     string     `json:"rpFirstName,omitempty"`
-	RPLastName      string     `json:"rpLastName,omitempty"`
-	JoinedAt        *time.Time `json:"joinedAt,omitempty"`
-	IsOnline        bool       `json:"isOnline"`
+	ID          string     `json:"id"`
+	Username    string     `json:"username"`
+	DisplayName string     `json:"displayName"`
+	AvatarURL   string     `json:"avatarUrl"`
+	RPFirstName string     `json:"rpFirstName,omitempty"`
+	RPLastName  string     `json:"rpLastName,omitempty"`
+	JoinedAt    *time.Time `json:"joinedAt,omitempty"`
+	IsOnline    bool       `json:"isOnline"`
 }
 
 type rpApplicationSummaryOut struct {
@@ -125,21 +119,17 @@ func NewDiscordAuthHandler(
 	frontendURL,
 	ticketWebhookURL,
 	rpWebhookURL,
-	rpModeratorIDsRaw,
-	minecraftServerToken,
-	minecraftServerAddr string,
+	rpModeratorIDsRaw string,
 ) *DiscordAuthHandler {
 	return &DiscordAuthHandler{
-		db:                   db,
-		clientID:             clientID,
-		clientSecret:         clientSecret,
-		redirectURL:          redirectURL,
-		frontendURL:          frontendURL,
-		ticketWebhookURL:     ticketWebhookURL,
-		rpWebhookURL:         rpWebhookURL,
-		rpModeratorIDs:       parseDiscordIDSet(rpModeratorIDsRaw),
-		minecraftServerToken: minecraftServerToken,
-		minecraftServerAddr:  minecraftServerAddr,
+		db:               db,
+		clientID:         clientID,
+		clientSecret:     clientSecret,
+		redirectURL:      redirectURL,
+		frontendURL:      frontendURL,
+		ticketWebhookURL: ticketWebhookURL,
+		rpWebhookURL:     rpWebhookURL,
+		rpModeratorIDs:   parseDiscordIDSet(rpModeratorIDsRaw),
 	}
 }
 
@@ -307,7 +297,6 @@ func (h *DiscordAuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 			Email:              user.Email,
 			Avatar:             user.Avatar,
 			AvatarURL:          avatarURLFor(user.DiscordID, user.Avatar),
-			LinkedMinecraft:    user.LinkedMinecraft,
 			RPFirstName:        user.RPFirstName,
 			RPLastName:         user.RPLastName,
 			ProfileURL:         buildProfileURL(h.frontendURL, user.DiscordID),
@@ -394,12 +383,11 @@ func (h *DiscordAuthHandler) publicProfileFromRPApplication(ctx context.Context,
 	}
 
 	profile := &publicProfile{
-		ID:              discordID,
-		Username:        username,
-		DisplayName:     displayName,
-		AvatarURL:       "",
-		LinkedMinecraft: latest.Nickname,
-		IsOnline:        false,
+		ID:          discordID,
+		Username:    username,
+		DisplayName: displayName,
+		AvatarURL:   "",
+		IsOnline:    false,
 	}
 
 	if strings.TrimSpace(latest.RPName) != "" {
@@ -417,14 +405,13 @@ func (h *DiscordAuthHandler) publicProfileFromRPApplication(ctx context.Context,
 
 func (h *DiscordAuthHandler) loadDiscordUser(ctx context.Context, discordID string) (*discordUserDoc, error) {
 	var user discordUserDoc
-	var minecraftVerifiedAt sql.NullTime
 	var lastSeenAt sql.NullTime
 	var firstAuthenticatedAt sql.NullTime
 
 	err := h.db.QueryRowContext(
 		ctx,
-		`SELECT discord_id, username, global_name, email, avatar, linked_minecraft,
-		        rp_first_name, rp_last_name, acceptance_status, minecraft_verified_at,
+		`SELECT discord_id, username, global_name, email, avatar,
+		        rp_first_name, rp_last_name, acceptance_status,
 		        last_seen_at, presence_active, first_authenticated_at, created_at, updated_at
 		 FROM discord_users
 		 WHERE discord_id = $1`,
@@ -435,11 +422,9 @@ func (h *DiscordAuthHandler) loadDiscordUser(ctx context.Context, discordID stri
 		&user.GlobalName,
 		&user.Email,
 		&user.Avatar,
-		&user.LinkedMinecraft,
 		&user.RPFirstName,
 		&user.RPLastName,
 		&user.AcceptanceStatus,
-		&minecraftVerifiedAt,
 		&lastSeenAt,
 		&user.PresenceActive,
 		&firstAuthenticatedAt,
@@ -449,9 +434,6 @@ func (h *DiscordAuthHandler) loadDiscordUser(ctx context.Context, discordID stri
 	if err != nil {
 		return nil, err
 	}
-	if minecraftVerifiedAt.Valid {
-		user.MinecraftVerifiedAt = &minecraftVerifiedAt.Time
-	}
 	if lastSeenAt.Valid {
 		user.LastSeenAt = &lastSeenAt.Time
 	}
@@ -459,6 +441,18 @@ func (h *DiscordAuthHandler) loadDiscordUser(ctx context.Context, discordID stri
 		user.FirstAuthenticatedAt = &firstAuthenticatedAt.Time
 	}
 	return &user, nil
+}
+
+func (h *DiscordAuthHandler) requireAuthenticatedUser(r *http.Request) (*discordUserDoc, error) {
+	cookie, err := r.Cookie("discord_id")
+	if err != nil || strings.TrimSpace(cookie.Value) == "" {
+		return nil, sql.ErrNoRows
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	return h.loadDiscordUser(ctx, strings.TrimSpace(cookie.Value))
 }
 
 func resolveCookieOptions(frontendURL string, r *http.Request) (string, bool) {
@@ -575,14 +569,13 @@ func buildProfileURL(frontendURL, discordID string) string {
 
 func toPublicProfile(user discordUserDoc, now time.Time) *publicProfile {
 	profile := &publicProfile{
-		ID:              user.DiscordID,
-		Username:        user.Username,
-		DisplayName:     displayNameFor(user),
-		AvatarURL:       avatarURLFor(user.DiscordID, user.Avatar),
-		LinkedMinecraft: user.LinkedMinecraft,
-		RPFirstName:     user.RPFirstName,
-		RPLastName:      user.RPLastName,
-		IsOnline:        isUserOnline(user, now),
+		ID:          user.DiscordID,
+		Username:    user.Username,
+		DisplayName: displayNameFor(user),
+		AvatarURL:   avatarURLFor(user.DiscordID, user.Avatar),
+		RPFirstName: user.RPFirstName,
+		RPLastName:  user.RPLastName,
+		IsOnline:    isUserOnline(user, now),
 	}
 
 	if user.FirstAuthenticatedAt != nil && !user.FirstAuthenticatedAt.IsZero() {
