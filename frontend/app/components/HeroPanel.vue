@@ -17,8 +17,14 @@
         </div>
       </div>
       <div class="actions">
-        <button class="primary" type="button" @click="startApplication">Подать заявку</button>
-        <button class="ghost" type="button">Промо</button>
+        <button class="primary" type="button" @click="startApplication">
+          <AppIcon name="apply" />
+          <span>Подать заявку</span>
+        </button>
+        <button class="ghost" type="button">
+          <AppIcon name="play" />
+          <span>Промо</span>
+        </button>
       </div>
     </div>
     <div class="hero-media">
@@ -30,6 +36,7 @@
 
 <script setup lang="ts">
 import logo from '~/assets/amy-logo.png'
+import AppIcon from '~/components/AppIcon.vue'
 import { useAuth } from '~/composables/useAuth'
 import { useServerStatus } from '~/composables/useServerStatus'
 
@@ -158,6 +165,9 @@ h1 {
   background: var(--panel);
   color: var(--text);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .primary {

@@ -25,27 +25,27 @@
 
       <nav class="nav">
         <NuxtLink class="nav-link" to="/" @click="close">
-          <span class="icon">H</span>
+          <span class="icon"><AppIcon name="home" /></span>
           <span class="label">Главная</span>
         </NuxtLink>
         <NuxtLink class="nav-link" to="/news" @click="close">
-          <span class="icon">N</span>
+          <span class="icon"><AppIcon name="news" /></span>
           <span class="label">Новости</span>
         </NuxtLink>
         <NuxtLink class="nav-link" to="/rules" @click="close">
-          <span class="icon">R</span>
+          <span class="icon"><AppIcon name="rules" /></span>
           <span class="label">Правила</span>
         </NuxtLink>
         <NuxtLink class="nav-link" to="/shop" @click="close">
-          <span class="icon">S</span>
+          <span class="icon"><AppIcon name="shop" /></span>
           <span class="label">Магазин</span>
         </NuxtLink>
         <NuxtLink class="nav-link" to="/faq" @click="close">
-          <span class="icon">F</span>
+          <span class="icon"><AppIcon name="faq" /></span>
           <span class="label">F.A.Q</span>
         </NuxtLink>
         <NuxtLink class="nav-link" to="/docs" @click="close">
-          <span class="icon">D</span>
+          <span class="icon"><AppIcon name="docs" /></span>
           <span class="label">Документация</span>
         </NuxtLink>
       </nav>
@@ -75,6 +75,7 @@
 <script setup lang="ts">
 import logo from '~/assets/amy-logo.png'
 import discordIcon from '~/assets/discord.png'
+import AppIcon from '~/components/AppIcon.vue'
 import { useAuth } from '~/composables/useAuth'
 
 const isOpen = ref(false)
@@ -269,7 +270,7 @@ watch(
   color: rgba(255, 255, 255, 0.85);
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.18);
-  font-size: 12px;
+  font-size: 17px;
   flex-shrink: 0;
 }
 

@@ -25,6 +25,7 @@ export type AuthUser = {
   rpLastName?: string
   profileUrl?: string
   isOnline?: boolean
+  isAmyDiscordMember?: boolean
   rpApplication?: RPApplicationSummary
 }
 

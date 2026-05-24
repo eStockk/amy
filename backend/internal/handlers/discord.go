@@ -67,18 +67,19 @@ type discordMeResponse struct {
 }
 
 type discordUserOut struct {
-	ID              string                   `json:"id"`
-	Username        string                   `json:"username"`
-	DisplayName     string                   `json:"displayName"`
-	Email           string                   `json:"email"`
-	Avatar          string                   `json:"avatar"`
-	AvatarURL       string                   `json:"avatarUrl"`
-	LinkedMinecraft string                   `json:"linkedMinecraft,omitempty"`
-	RPFirstName     string                   `json:"rpFirstName,omitempty"`
-	RPLastName      string                   `json:"rpLastName,omitempty"`
-	ProfileURL      string                   `json:"profileUrl"`
-	IsOnline        bool                     `json:"isOnline"`
-	RPApplication   *rpApplicationSummaryOut `json:"rpApplication,omitempty"`
+	ID                 string                   `json:"id"`
+	Username           string                   `json:"username"`
+	DisplayName        string                   `json:"displayName"`
+	Email              string                   `json:"email"`
+	Avatar             string                   `json:"avatar"`
+	AvatarURL          string                   `json:"avatarUrl"`
+	LinkedMinecraft    string                   `json:"linkedMinecraft,omitempty"`
+	RPFirstName        string                   `json:"rpFirstName,omitempty"`
+	RPLastName         string                   `json:"rpLastName,omitempty"`
+	ProfileURL         string                   `json:"profileUrl"`
+	IsOnline           bool                     `json:"isOnline"`
+	IsAmyDiscordMember bool                     `json:"isAmyDiscordMember"`
+	RPApplication      *rpApplicationSummaryOut `json:"rpApplication,omitempty"`
 }
 
 type publicProfileResponse struct {
@@ -294,23 +295,25 @@ func (h *DiscordAuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	}
 
 	summary, _ := h.latestApplicationSummary(ctx, user.DiscordID)
+	isAmyDiscordMember, _ := h.isAmyDiscordMember(ctx, user.DiscordID)
 
 	now := time.Now().UTC()
 	writeJSON(w, http.StatusOK, discordMeResponse{
 		Authenticated: true,
 		User: &discordUserOut{
-			ID:              user.DiscordID,
-			Username:        user.Username,
-			DisplayName:     displayNameFor(*user),
-			Email:           user.Email,
-			Avatar:          user.Avatar,
-			AvatarURL:       avatarURLFor(user.DiscordID, user.Avatar),
-			LinkedMinecraft: user.LinkedMinecraft,
-			RPFirstName:     user.RPFirstName,
-			RPLastName:      user.RPLastName,
-			ProfileURL:      buildProfileURL(h.frontendURL, user.DiscordID),
-			IsOnline:        isUserOnline(*user, now),
-			RPApplication:   summary,
+			ID:                 user.DiscordID,
+			Username:           user.Username,
+			DisplayName:        displayNameFor(*user),
+			Email:              user.Email,
+			Avatar:             user.Avatar,
+			AvatarURL:          avatarURLFor(user.DiscordID, user.Avatar),
+			LinkedMinecraft:    user.LinkedMinecraft,
+			RPFirstName:        user.RPFirstName,
+			RPLastName:         user.RPLastName,
+			ProfileURL:         buildProfileURL(h.frontendURL, user.DiscordID),
+			IsOnline:           isUserOnline(*user, now),
+			IsAmyDiscordMember: isAmyDiscordMember,
+			RPApplication:      summary,
 		},
 	})
 }
@@ -547,6 +550,17 @@ func avatarURLFor(discordID, avatar string) string {
 		return ""
 	}
 	return "https://cdn.discordapp.com/avatars/" + discordID + "/" + avatar + ".png?size=256"
+}
+
+func (h *DiscordAuthHandler) isAmyDiscordMember(ctx context.Context, discordID string) (bool, error) {
+	discordID = strings.TrimSpace(discordID)
+	if discordID == "" {
+		return false, nil
+	}
+
+	var exists bool
+	err := h.db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM discord_member_states WHERE discord_id = $1)`, discordID).Scan(&exists)
+	return exists, err
 }
 
 func buildProfileURL(frontendURL, discordID string) string {

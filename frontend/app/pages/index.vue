@@ -75,6 +75,7 @@ const isEmpty = computed(() => !pending.value && news.value.length === 0)
   filter: blur(20px);
   opacity: 0.8;
   z-index: 0;
+  pointer-events: none;
 }
 
 .hero-row,

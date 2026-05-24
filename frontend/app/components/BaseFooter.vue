@@ -1,7 +1,7 @@
 <template>
   <footer class="site-footer">
     <div class="footer-inner">
-      <section class="discord-invite" aria-label="Discord сервер Amy">
+      <section v-if="showDiscordInvite" class="discord-invite" aria-label="Discord сервер Amy">
         <div class="discord-mark">
           <img :src="discordIcon" alt="" />
         </div>
@@ -31,6 +31,10 @@
 
 <script setup lang="ts">
 import discordIcon from '~/assets/discord.png'
+import { useAuth } from '~/composables/useAuth'
+
+const { authenticated, user } = useAuth()
+const showDiscordInvite = computed(() => !authenticated.value || !user.value?.isAmyDiscordMember)
 </script>
 
 <style scoped>
@@ -43,7 +47,7 @@ import discordIcon from '~/assets/discord.png'
 .footer-inner {
   display: grid;
   gap: 20px;
-  max-width: 1520px;
+  width: 100%;
   margin: 0 auto;
   padding: 28px;
   border-top: 1px solid var(--stroke);

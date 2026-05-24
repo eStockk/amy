@@ -10,20 +10,22 @@
       <input type="text" placeholder="Поиск статьи..." />
     </div>
     <div class="actions">
-      <button class="primary" type="button" aria-label="Открыть форму поддержки" @click="supportOpen = true">Поддержка</button>
+      <NuxtLink class="primary" to="/support" aria-label="Открыть форму поддержки">
+        <AppIcon name="support" />
+        <span>Поддержка</span>
+      </NuxtLink>
     </div>
-    <SupportModal :open="supportOpen" @close="supportOpen = false" />
   </header>
 </template>
 
 <script setup lang="ts">
-import SupportModal from '~/components/SupportModal.vue'
-
-const supportOpen = ref(false)
+import AppIcon from '~/components/AppIcon.vue'
 </script>
 
 <style scoped>
 .topbar {
+  position: relative;
+  z-index: 5;
   display: flex;
   align-items: center;
   justify-content: space-between;
