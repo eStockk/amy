@@ -511,9 +511,13 @@ func (h *SupportHandler) Messages(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		_ = h.writeTicketHistoryHTML(ctx, ticket)
-		if err := h.sendDiscordTicketChatMessage(ticket, message); err != nil {
+		discordMessageID, err := h.sendDiscordTicketChatMessage(ticket, message, len(files))
+		if err != nil {
 			writeError(w, http.StatusBadGateway, "failed to send message to discord")
 			return
+		}
+		if discordMessageID != "" {
+			_, _ = h.db.ExecContext(ctx, `UPDATE support_ticket_messages SET discord_message_id = $1 WHERE id = $2`, discordMessageID, messageID)
 		}
 	}
 
@@ -600,28 +604,47 @@ func (h *SupportHandler) Notifications(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (h *SupportHandler) sendDiscordTicketChatMessage(ticket models.Ticket, message string) error {
+func (h *SupportHandler) sendDiscordTicketChatMessage(ticket models.Ticket, message string, attachmentCount int) (string, error) {
 	if h.webhookURL == "" {
-		return nil
+		return "", nil
+	}
+	discordText := strings.TrimSpace(message)
+	if discordText == "" && attachmentCount > 0 {
+		discordText = fmt.Sprintf("[изображений: %d]", attachmentCount)
 	}
 	payload := map[string]any{
-		"content":          fmt.Sprintf("Ответ пользователя по тикету #%d (%s):\n%s", ticket.ID, ticket.Subject, trimForDiscord(message)),
+		"content":          fmt.Sprintf("Ответ пользователя по тикету #%d (%s):\n%s", ticket.ID, ticket.Subject, trimForDiscord(discordText)),
 		"allowed_mentions": map[string]any{"parse": []string{}},
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
-		return err
+		return "", err
 	}
-	req, err := http.NewRequest(http.MethodPost, h.webhookURL, bytes.NewReader(raw))
+	requestURL, err := webhookURLWithWait(h.webhookURL)
 	if err != nil {
-		return err
+		return "", err
+	}
+	req, err := http.NewRequest(http.MethodPost, requestURL, bytes.NewReader(raw))
+	if err != nil {
+		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if resp != nil {
 		defer resp.Body.Close()
 	}
-	return err
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		bodyRaw, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return "", fmt.Errorf("discord webhook error: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(bodyRaw)))
+	}
+	var webhookMessage discordWebhookMessage
+	if err := json.NewDecoder(resp.Body).Decode(&webhookMessage); err != nil {
+		return "", nil
+	}
+	return strings.TrimSpace(webhookMessage.ID), nil
 }
 
 func (h *SupportHandler) loadTicketMessages(ctx context.Context, ticketID int64) ([]models.TicketMessage, error) {

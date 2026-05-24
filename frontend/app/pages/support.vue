@@ -9,26 +9,53 @@
       <form @submit.prevent="submit">
         <label>
           Discord ник *
-          <input v-model="discordNick" type="text" placeholder="username или display name" required />
+          <span class="field-control">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M8 9.5h8M8 14.5h5.5M7.5 4.5h9A3.5 3.5 0 0 1 20 8v6a3.5 3.5 0 0 1-3.5 3.5H13L8.7 20v-2.5H7.5A3.5 3.5 0 0 1 4 14V8a3.5 3.5 0 0 1 3.5-3.5Z" />
+            </svg>
+            <input v-model="discordNick" type="text" placeholder="username или display name" required />
+          </span>
         </label>
         <label>
           Тема *
-          <input v-model="subject" type="text" required />
+          <span class="field-control">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 6.5h14M5 12h14M5 17.5h8" />
+            </svg>
+            <input v-model="subject" type="text" required />
+          </span>
         </label>
         <label>
           Категория
-          <select v-model="category">
-            <option>Общие вопросы</option>
-            <option>Техническая проблема</option>
-            <option>Оплата</option>
-            <option>Другое</option>
-          </select>
+          <span class="field-control select-control">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4.5 7.5h15M7.5 12h9M10 16.5h4" />
+            </svg>
+            <select v-model="category">
+              <option>Общие вопросы</option>
+              <option>Техническая проблема</option>
+              <option>Оплата</option>
+              <option>Другое</option>
+            </select>
+            <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m8 10 4 4 4-4" />
+            </svg>
+          </span>
         </label>
         <label>
           Сообщение *
-          <textarea v-model="message" rows="5" required></textarea>
+          <span class="field-control textarea-control">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 7h12M6 12h12M6 17h7" />
+            </svg>
+            <textarea v-model="message" rows="5" required></textarea>
+          </span>
         </label>
         <button type="submit" class="primary" :disabled="sending">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 12 20 4l-4 16-4-6-8-2Z" />
+            <path d="m12 14 4-5" />
+          </svg>
           {{ sending ? 'Отправляем...' : 'Отправить тикет' }}
         </button>
         <p v-if="status" class="status" :class="{ error: statusError }">{{ status }}</p>
@@ -44,7 +71,15 @@
             #{{ activeTicket.id }} · {{ statusLabel(activeTicket.status) }} · {{ formatDate(activeTicket.createdAt) }}
           </p>
         </div>
-        <button class="ghost" type="button" @click="loadTickets">Обновить</button>
+        <button class="ghost" type="button" @click="loadTickets">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M20 11a8 8 0 0 0-14.4-4.8L4 8" />
+            <path d="M4 4v4h4" />
+            <path d="M4 13a8 8 0 0 0 14.4 4.8L20 16" />
+            <path d="M20 20v-4h-4" />
+          </svg>
+          Обновить
+        </button>
       </div>
 
       <div class="notify-panel">
@@ -111,9 +146,19 @@
           <textarea v-model="replyText" rows="3" placeholder="Ответить в тикет..."></textarea>
           <label class="file-picker">
             <input ref="imageInput" type="file" accept="image/*" @change="selectReplyImage" />
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 19h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2Z" />
+              <path d="m8 14 2.2-2.2a1.2 1.2 0 0 1 1.7 0L15 15" />
+              <path d="m14 14 1.2-1.2a1.2 1.2 0 0 1 1.7 0L19 15" />
+              <path d="M8.5 9.5h.01" />
+            </svg>
             <span>{{ replyImageName || 'Изображение до 10 MB' }}</span>
           </label>
           <button type="submit" class="primary" :disabled="replySending">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 12 20 4l-4 16-4-6-8-2Z" />
+              <path d="m12 14 4-5" />
+            </svg>
             {{ replySending ? 'Отправляем...' : 'Ответить' }}
           </button>
         </form>
@@ -442,6 +487,7 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: minmax(320px, 440px) minmax(0, 1fr);
   gap: 20px;
+  align-items: start;
   min-height: calc(100vh - 140px);
 }
 
@@ -450,6 +496,7 @@ onBeforeUnmount(() => {
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.045);
   padding: 20px;
+  height: fit-content;
 }
 
 .ticket-form,
@@ -490,13 +537,80 @@ textarea {
   color: var(--text);
 }
 
+.field-control {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 42px;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: 0 12px;
+  color: var(--text);
+}
+
+.field-control svg,
+.primary svg,
+.ghost svg,
+.file-picker svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.field-control > input,
+.field-control > select,
+.field-control > textarea {
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 10px 0;
+  outline: 0;
+}
+
+.field-control > input:focus,
+.field-control > select:focus,
+.field-control > textarea:focus {
+  outline: 0;
+}
+
+.textarea-control {
+  align-items: start;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.textarea-control svg {
+  margin-top: 2px;
+}
+
+.textarea-control > textarea {
+  padding: 0;
+}
+
+.select-control {
+  grid-template-columns: 20px minmax(0, 1fr) 18px;
+}
+
+.select-control .chevron {
+  pointer-events: none;
+}
+
 textarea {
   resize: none;
 }
 
 select {
   appearance: none;
-  background-color: rgba(30, 32, 42, 0.96);
 }
 
 select option {
@@ -513,6 +627,10 @@ select option {
 }
 
 .primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
   border-radius: 999px;
   padding: 10px 16px;
@@ -543,6 +661,9 @@ select option {
 }
 
 .ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   border-radius: 999px;
   padding: 8px 12px;
   background: rgba(255, 255, 255, 0.08);
@@ -668,6 +789,9 @@ select option {
 }
 
 .file-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   min-height: 42px;
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 8px;
