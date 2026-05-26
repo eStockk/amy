@@ -171,6 +171,18 @@ EOF_DOCKER
         done
       done
 
+      echo '# HELP amy_docker_container_state Container state as a labelled gauge. Running containers are 1, others are 0.'
+      echo '# TYPE amy_docker_container_state gauge'
+      docker ps -a --format '{{.ID}}|{{.Names}}|{{.Image}}|{{.Status}}' 2>/dev/null | while IFS='|' read -r id name image status; do
+        [ -n "$id" ] || continue
+        running=0
+        case "$status" in
+          Up*) running=1 ;;
+        esac
+        printf 'amy_docker_container_state{id="%s",name="%s",image="%s",status="%s"} %s\n' \
+          "$(label_escape "$id")" "$(label_escape "$name")" "$(label_escape "$image")" "$(label_escape "$status")" "$running"
+      done
+
       echo '# HELP amy_docker_container_cpu_percent Docker container CPU usage from docker stats.'
       echo '# TYPE amy_docker_container_cpu_percent gauge'
       echo '# HELP amy_docker_container_memory_usage_bytes Docker container memory usage from docker stats.'

@@ -9,6 +9,7 @@ import (
 	"html"
 	"io"
 	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
@@ -170,10 +171,6 @@ func (h *SupportHandler) Moderate(w http.ResponseWriter, r *http.Request) {
 		h.Messages(w, r)
 		return
 	}
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
 
 	ticketID, ok := parseSupportModerationIDFromPath(r.URL.Path)
 	if !ok {
@@ -182,8 +179,12 @@ func (h *SupportHandler) Moderate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	action := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
-	if action != "resolve" && action != "reconsider" && action != "archive" && action != "unarchive" && action != "delete" && action != "unarchive_prompt" {
+	if action != "resolve" && action != "reconsider" && action != "archive" && action != "unarchive" && action != "delete" && action != "unarchive_prompt" && action != "reply_prompt" && action != "reply" {
 		writeError(w, http.StatusBadRequest, "invalid action")
+		return
+	}
+	if r.Method != http.MethodGet && !(r.Method == http.MethodPost && action == "reply") {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
@@ -210,6 +211,31 @@ func (h *SupportHandler) Moderate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if action == "reply_prompt" {
+		h.writeTicketReplyHTML(w, ticket, "")
+		return
+	}
+	if action == "reply" {
+		if err := r.ParseForm(); err != nil {
+			h.writeTicketReplyHTML(w, ticket, "Не удалось прочитать форму ответа.")
+			return
+		}
+		message := strings.TrimSpace(r.FormValue("message"))
+		if message == "" {
+			h.writeTicketReplyHTML(w, ticket, "Введите текст ответа.")
+			return
+		}
+		if len([]rune(message)) > 2000 {
+			h.writeTicketReplyHTML(w, ticket, "Ответ слишком длинный, максимум 2000 символов.")
+			return
+		}
+		if err := h.saveAdminTicketReply(ctx, ticket, "Техподдержка", message, ""); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to save reply")
+			return
+		}
+		h.writeTicketReplySentHTML(w, ticket)
+		return
+	}
 	if action == "unarchive_prompt" {
 		h.writeTicketDeleteConfirmHTML(w, ticket)
 		return
@@ -331,7 +357,7 @@ func (h *SupportHandler) buildDiscordTicketPayload(ticket models.Ticket) map[str
 
 	embed := map[string]any{
 		"title":       ticket.Subject,
-		"description": "Статус тикета: " + statusText,
+		"description": "Статус тикета: " + statusText + "\nОтветить пользователю можно кнопкой ниже.",
 		"fields": []map[string]string{
 			{"name": "Discord", "value": safeValue(ticket.DiscordNick)},
 			{"name": "Category", "value": safeValue(ticket.Category)},
@@ -511,7 +537,7 @@ func (h *SupportHandler) Messages(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		_ = h.writeTicketHistoryHTML(ctx, ticket)
-		discordMessageID, err := h.sendDiscordTicketChatMessage(ticket, message, len(files))
+		discordMessageID, err := h.sendDiscordTicketChatMessage(ticket, message, files)
 		if err != nil {
 			writeError(w, http.StatusBadGateway, "failed to send message to discord")
 			return
@@ -604,13 +630,13 @@ func (h *SupportHandler) Notifications(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (h *SupportHandler) sendDiscordTicketChatMessage(ticket models.Ticket, message string, attachmentCount int) (string, error) {
+func (h *SupportHandler) sendDiscordTicketChatMessage(ticket models.Ticket, message string, files []supportUpload) (string, error) {
 	if h.webhookURL == "" {
 		return "", nil
 	}
 	discordText := strings.TrimSpace(message)
-	if discordText == "" && attachmentCount > 0 {
-		discordText = fmt.Sprintf("[изображений: %d]", attachmentCount)
+	if discordText == "" && len(files) > 0 {
+		discordText = fmt.Sprintf("[изображений: %d]", len(files))
 	}
 	payload := map[string]any{
 		"content":          fmt.Sprintf("Ответ пользователя по тикету #%d (%s):\n%s", ticket.ID, ticket.Subject, trimForDiscord(discordText)),
@@ -624,11 +650,42 @@ func (h *SupportHandler) sendDiscordTicketChatMessage(ticket models.Ticket, mess
 	if err != nil {
 		return "", err
 	}
-	req, err := http.NewRequest(http.MethodPost, requestURL, bytes.NewReader(raw))
+
+	var body io.Reader
+	contentType := "application/json"
+	if len(files) == 0 {
+		body = bytes.NewReader(raw)
+	} else {
+		var form bytes.Buffer
+		writer := multipart.NewWriter(&form)
+		payloadField, err := writer.CreateFormField("payload_json")
+		if err != nil {
+			return "", err
+		}
+		if _, err := payloadField.Write(raw); err != nil {
+			return "", err
+		}
+		for index, file := range files {
+			part, err := writer.CreateFormFile(fmt.Sprintf("files[%d]", index), file.Name)
+			if err != nil {
+				return "", err
+			}
+			if _, err := part.Write(file.Bytes); err != nil {
+				return "", err
+			}
+		}
+		if err := writer.Close(); err != nil {
+			return "", err
+		}
+		body = &form
+		contentType = writer.FormDataContentType()
+	}
+
+	req, err := http.NewRequest(http.MethodPost, requestURL, body)
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", contentType)
 	resp, err := http.DefaultClient.Do(req)
 	if resp != nil {
 		defer resp.Body.Close()
@@ -645,6 +702,37 @@ func (h *SupportHandler) sendDiscordTicketChatMessage(ticket models.Ticket, mess
 		return "", nil
 	}
 	return strings.TrimSpace(webhookMessage.ID), nil
+}
+
+func (h *SupportHandler) saveAdminTicketReply(ctx context.Context, ticket models.Ticket, authorName, message, discordMessageID string) error {
+	authorName = strings.TrimSpace(authorName)
+	if authorName == "" {
+		authorName = "Техподдержка"
+	}
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return fmt.Errorf("empty reply")
+	}
+	_, err := h.db.ExecContext(
+		ctx,
+		`INSERT INTO support_ticket_messages
+		 (ticket_id, author_type, author_name, author_discord_id, author_discord_status, message, discord_message_id, read_by_user, created_at)
+		 VALUES ($1, 'admin', $2, '', 'unknown', $3, $4, FALSE, $5)
+		 ON CONFLICT (discord_message_id) WHERE discord_message_id <> '' DO NOTHING`,
+		ticket.ID,
+		authorName,
+		message,
+		strings.TrimSpace(discordMessageID),
+		time.Now().UTC(),
+	)
+	if err != nil {
+		return err
+	}
+	_ = h.writeTicketHistoryHTML(ctx, ticket)
+	if h.vapidPublicKey != "" && h.vapidPrivateKey != "" {
+		h.sendTicketReplyPush(ctx, ticket, authorName, message)
+	}
+	return nil
 }
 
 func (h *SupportHandler) loadTicketMessages(ctx context.Context, ticketID int64) ([]models.TicketMessage, error) {
@@ -703,6 +791,7 @@ func (h *SupportHandler) ticketDiscordComponents(ticket models.Ticket) []any {
 	status := normalizedTicketStatus(ticket.Status)
 	if status == "resolved" {
 		return []any{map[string]any{"type": 1, "components": []any{
+			map[string]any{"type": 2, "style": 5, "label": "Ответить пользователю", "url": h.ticketModerationURL(ticket.ID, "reply_prompt", ticket.ModerationToken)},
 			map[string]any{"type": 2, "style": 5, "label": "На пересмотр", "url": h.ticketModerationURL(ticket.ID, "reconsider", ticket.ModerationToken)},
 			map[string]any{"type": 2, "style": 5, "label": "Архивировать", "url": h.ticketModerationURL(ticket.ID, "archive", ticket.ModerationToken)},
 			map[string]any{"type": 2, "style": 5, "label": "Удалить сразу", "url": h.ticketModerationURL(ticket.ID, "delete", ticket.ModerationToken)},
@@ -710,22 +799,22 @@ func (h *SupportHandler) ticketDiscordComponents(ticket models.Ticket) []any {
 	}
 	if status == "archived" {
 		return []any{map[string]any{"type": 1, "components": []any{
+			map[string]any{"type": 2, "style": 5, "label": "Ответить пользователю", "url": h.ticketModerationURL(ticket.ID, "reply_prompt", ticket.ModerationToken)},
 			map[string]any{"type": 2, "style": 5, "label": "Разархивировать/удалить сразу", "url": h.ticketModerationURL(ticket.ID, "unarchive_prompt", ticket.ModerationToken)},
 		}}}
 	}
-	label := "Решён"
-	action := "resolve"
-	if normalizedTicketStatus(ticket.Status) == "resolved" {
-		label = "На перерассмотр"
-		action = "reconsider"
-	}
-
 	return []any{map[string]any{"type": 1, "components": []any{
 		map[string]any{
 			"type":  2,
 			"style": 5,
-			"label": label,
-			"url":   h.ticketModerationURL(ticket.ID, action, ticket.ModerationToken),
+			"label": "Ответить пользователю",
+			"url":   h.ticketModerationURL(ticket.ID, "reply_prompt", ticket.ModerationToken),
+		},
+		map[string]any{
+			"type":  2,
+			"style": 5,
+			"label": "Решён",
+			"url":   h.ticketModerationURL(ticket.ID, "resolve", ticket.ModerationToken),
 		},
 	}}}
 }
@@ -1159,6 +1248,76 @@ func (h *SupportHandler) writeTicketDeleteConfirmHTML(w http.ResponseWriter, tic
     </div>
   </body>
 </html>`, ticket.ID, h.ticketModerationURL(ticket.ID, "delete", ticket.ModerationToken), h.ticketModerationURL(ticket.ID, "archive", ticket.ModerationToken))
+	_, _ = w.Write([]byte(htmlBody))
+}
+
+func (h *SupportHandler) writeTicketReplyHTML(w http.ResponseWriter, ticket models.Ticket, errorText string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	errorBlock := ""
+	if strings.TrimSpace(errorText) != "" {
+		errorBlock = `<p class="error">` + html.EscapeString(errorText) + `</p>`
+	}
+	htmlBody := fmt.Sprintf(`<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Ответить пользователю</title>
+    <style>
+      body{font-family:system-ui;background:#0f1118;color:#fff;margin:0;padding:40px}
+      .card{max-width:760px;margin:0 auto;padding:24px;border-radius:14px;background:#171a26;border:1px solid rgba(255,255,255,.12)}
+      .muted{color:#b4b6c7}.error{color:#ff8f8f}
+      textarea{box-sizing:border-box;width:100%%;min-height:170px;resize:vertical;border-radius:12px;border:1px solid rgba(255,255,255,.16);background:#10131d;color:#fff;padding:14px;font:inherit}
+      button,a{display:inline-flex;margin-right:10px;margin-top:12px;padding:10px 14px;border-radius:10px;border:0;background:#f7c948;color:#0b0b0f;text-decoration:none;font-weight:700;cursor:pointer}
+      a.secondary{background:rgba(255,255,255,.12);color:#fff}
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Ответ пользователю по тикету #%d</h1>
+      <p class="muted">%s · %s</p>
+      %s
+      <form method="post" action="%s">
+        <textarea name="message" maxlength="2000" required placeholder="Напишите ответ пользователю..."></textarea>
+        <div>
+          <button type="submit">Отправить пользователю</button>
+          <a class="secondary" href="%s">Назад</a>
+        </div>
+      </form>
+    </div>
+  </body>
+</html>`,
+		ticket.ID,
+		html.EscapeString(ticket.Subject),
+		html.EscapeString(ticket.DiscordNick),
+		errorBlock,
+		h.ticketModerationURL(ticket.ID, "reply", ticket.ModerationToken),
+		h.ticketModerationURL(ticket.ID, "reply_prompt", ticket.ModerationToken),
+	)
+	_, _ = w.Write([]byte(htmlBody))
+}
+
+func (h *SupportHandler) writeTicketReplySentHTML(w http.ResponseWriter, ticket models.Ticket) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	htmlBody := fmt.Sprintf(`<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Ответ отправлен</title>
+    <style>
+      body{font-family:system-ui;background:#0f1118;color:#fff;margin:0;padding:40px}
+      .card{max-width:760px;margin:0 auto;padding:24px;border-radius:14px;background:#171a26;border:1px solid rgba(255,255,255,.12)}
+      .muted{color:#b4b6c7}
+      a{display:inline-flex;margin-right:10px;margin-top:12px;padding:10px 14px;border-radius:10px;background:#f7c948;color:#0b0b0f;text-decoration:none;font-weight:700}
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Ответ отправлен</h1>
+      <p class="muted">Сообщение добавлено в чат тикета #%d. Если у пользователя включены уведомления, ему придёт push.</p>
+      <a href="%s">Написать ещё</a>
+    </div>
+  </body>
+</html>`, ticket.ID, h.ticketModerationURL(ticket.ID, "reply_prompt", ticket.ModerationToken))
 	_, _ = w.Write([]byte(htmlBody))
 }
 

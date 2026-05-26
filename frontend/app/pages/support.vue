@@ -154,13 +154,20 @@
             </svg>
             <span>{{ replyImageName || 'Изображение до 10 MB' }}</span>
           </label>
-          <button type="submit" class="primary" :disabled="replySending">
+          <button v-if="replyImage" type="button" class="remove-file" aria-label="Убрать изображение" @click="clearReplyImage">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18 6 6 18" />
+              <path d="m6 6 12 12" />
+            </svg>
+          </button>
+          <button type="submit" class="primary" :disabled="replySending || (!replyText.trim() && !replyImage)">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M4 12 20 4l-4 16-4-6-8-2Z" />
               <path d="m12 14 4-5" />
             </svg>
             {{ replySending ? 'Отправляем...' : 'Ответить' }}
           </button>
+          <p v-if="replyError" class="reply-error">{{ replyError }}</p>
         </form>
       </template>
     </section>
@@ -220,6 +227,7 @@ const messages = ref<TicketMessage[]>([])
 const replyText = ref('')
 const replyImage = ref<File | null>(null)
 const replyImageName = ref('')
+const replyError = ref('')
 const replySending = ref(false)
 const imageInput = ref<HTMLInputElement | null>(null)
 const messageList = ref<HTMLElement | null>(null)
@@ -299,11 +307,12 @@ const loadMessages = async () => {
 
 const sendReply = async () => {
   if (!activeTicketId.value || (!replyText.value.trim() && !replyImage.value)) return
+  replyError.value = ''
   replySending.value = true
   try {
     const body = new FormData()
     body.append('message', replyText.value)
-    if (replyImage.value) body.append('image', replyImage.value)
+    if (replyImage.value) body.append('image', replyImage.value, replyImage.value.name)
     const response = await $fetch<{ messages: TicketMessage[] }>(
       `${config.public.apiBase}/support/tickets/${activeTicketId.value}/messages`,
       {
@@ -317,6 +326,8 @@ const sendReply = async () => {
     messages.value = response.messages
     await nextTick()
     messageList.value?.scrollTo({ top: messageList.value.scrollHeight, behavior: 'smooth' })
+  } catch (error: unknown) {
+    replyError.value = (error as { data?: { error?: string }; message?: string })?.data?.error || 'Не удалось отправить сообщение или изображение.'
   } finally {
     replySending.value = false
   }
@@ -324,11 +335,18 @@ const sendReply = async () => {
 
 const selectReplyImage = (event: Event) => {
   const file = (event.target as HTMLInputElement).files?.[0]
+  replyError.value = ''
   if (!file) {
     clearReplyImage()
     return
   }
+  if (!file.type.startsWith('image/')) {
+    replyError.value = 'Можно прикреплять только изображения.'
+    clearReplyImage()
+    return
+  }
   if (file.size > 10 * 1024 * 1024) {
+    replyError.value = 'Изображение должно быть не больше 10 MB.'
     clearReplyImage()
     return
   }
@@ -555,7 +573,8 @@ textarea {
 .field-control svg,
 .primary svg,
 .ghost svg,
-.file-picker svg {
+.file-picker svg,
+.remove-file svg {
   width: 18px;
   height: 18px;
   flex: 0 0 auto;
@@ -784,7 +803,7 @@ select option {
 }
 
 .reply {
-  grid-template-columns: minmax(0, 1fr) minmax(180px, 240px) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 240px) auto auto;
   align-items: end;
 }
 
@@ -809,6 +828,23 @@ select option {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.remove-file {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.reply-error {
+  grid-column: 1 / -1;
+  color: #ff9090;
 }
 
 .attachments {

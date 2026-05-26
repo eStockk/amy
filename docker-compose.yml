@@ -177,6 +177,36 @@ services:
       - /opt/amy/minecraft:/host/opt/amy/minecraft
       - /opt/amy/app:/host/opt/amy/app
 
+  docker-prune:
+    image: docker:27-cli
+    restart: unless-stopped
+    logging: *default-logging
+    mem_limit: 64m
+    mem_reservation: 32m
+    environment:
+      DOCKER_PRUNE_INTERVAL_SECONDS: ${DOCKER_PRUNE_INTERVAL_SECONDS:-86400}
+      DOCKER_BUILD_CACHE_RETENTION: ${DOCKER_BUILD_CACHE_RETENTION:-24h}
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        interval=$${DOCKER_PRUNE_INTERVAL_SECONDS:-86400}
+        retention=$${DOCKER_BUILD_CACHE_RETENTION:-24h}
+        [ "$$interval" -gt 0 ] || interval=86400
+        while true; do
+          echo "[$$(date -Iseconds)] pruning Docker build cache older than $$retention"
+          docker builder prune -af --filter "until=$$retention" || true
+          echo "[$$(date -Iseconds)] pruning stopped containers"
+          docker container prune -f || true
+          echo "[$$(date -Iseconds)] pruning dangling images"
+          docker image prune -f || true
+          echo "[$$(date -Iseconds)] Docker prune complete; sleeping $$interval seconds"
+          sleep "$$interval"
+        done
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.15.0
     restart: unless-stopped
