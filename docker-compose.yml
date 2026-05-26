@@ -2,7 +2,7 @@ x-logging: &default-logging
   driver: json-file
   options:
     max-size: "10m"
-    max-file: "3"
+    max-file: "4"
 
 services:
   postgres:
@@ -130,47 +130,52 @@ services:
       - node-exporter-textfile:/textfile:ro
 
   storage-metrics:
+    image: docker:27-cli
+    restart: unless-stopped
+    logging: *default-logging
+    mem_limit: 128m
+    mem_reservation: 64m
+    pid: host
+    environment:
+      HOST_METRICS_INTERVAL: ${HOST_METRICS_INTERVAL:-15}
+      HOST_METRICS_TOP_LIMIT: ${HOST_METRICS_TOP_LIMIT:-15}
+      MINECRAFT_DIR: ${MINECRAFT_DIR:-/opt/amy/minecraft}
+      APP_DIR: ${APP_DIR:-/opt/amy/app}
+      SUPPORT_DIR: ${SUPPORT_DIR:-/var/lib/docker/volumes/app_support-data/_data}
+    command: ["/bin/sh", "/usr/local/bin/collect-host-metrics"]
+    volumes:
+      - /:/host:ro,rslave
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - node-exporter-textfile:/textfile
+      - ./monitoring/host-metrics/collect-host-metrics.sh:/usr/local/bin/collect-host-metrics:ro
+
+  log-retention:
     image: alpine:3.20
     restart: unless-stopped
     logging: *default-logging
     mem_limit: 64m
     mem_reservation: 32m
+    environment:
+      LOG_RETENTION_DAYS: ${LOG_RETENTION_DAYS:-4}
     command:
       - /bin/sh
       - -c
       - |
+        set -eu
+        days=$${LOG_RETENTION_DAYS:-4}
+        [ "$$days" -gt 0 ] || days=4
+        # find -mtime +3 removes files older than four full days.
+        older_than=$$((days - 1))
         while true; do
-          tmp=/textfile/amy_storage.prom.tmp
-          out=/textfile/amy_storage.prom
-          {
-            echo '# HELP amy_storage_category_bytes Estimated storage used by Amy storage categories.'
-            echo '# TYPE amy_storage_category_bytes gauge'
-            for item in \
-              'Логи|Docker-логи|/host/var/lib/docker/containers' \
-              'Логи|Системные логи|/host/var/log' \
-              'Сервер|Файлы приложения|/host/opt/amy/app' \
-              'Сервер|PostgreSQL|/host/var/lib/docker/volumes/app_postgres-data/_data' \
-              'Сервер|Prometheus|/host/var/lib/docker/volumes/app_prometheus-data/_data' \
-              'Сервер|Grafana|/host/var/lib/docker/volumes/app_grafana-data/_data'; do
-              category=$${item%%|*}
-              rest=$${item#*|}
-              section=$${rest%%|*}
-              path=$${rest#*|}
-              display_path=$${path#/host}
-              if [ -e "$$path" ]; then
-                bytes=$$(du -sk "$$path" 2>/dev/null | awk '{print $$1 * 1024}')
-              else
-                bytes=0
-              fi
-              printf 'amy_storage_category_bytes{category="%s",section="%s",path="%s"} %s\n' "$$category" "$$section" "$$display_path" "$${bytes:-0}"
-            done
-          } > "$$tmp"
-          mv "$$tmp" "$$out"
-          sleep 60
+          find /host/var/log -type f \( -name '*.log.*' -o -name '*.gz' -o -name '*.1' -o -name '*.old' \) -mtime +"$$older_than" -delete 2>/dev/null || true
+          find /host/opt/amy/minecraft -type f \( -name '*.log' -o -name '*.log.gz' -o -name '*.log.*' \) -mtime +"$$older_than" -delete 2>/dev/null || true
+          find /host/opt/amy/app -type f \( -name '*.log' -o -name '*.log.gz' -o -name '*.log.*' \) -mtime +"$$older_than" -delete 2>/dev/null || true
+          sleep 21600
         done
     volumes:
-      - /:/host:ro,rslave
-      - node-exporter-textfile:/textfile
+      - /var/log:/host/var/log
+      - /opt/amy/minecraft:/host/opt/amy/minecraft
+      - /opt/amy/app:/host/opt/amy/app
 
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.15.0

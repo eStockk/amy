@@ -374,7 +374,7 @@ func (h *DiscordAuthHandler) publicProfileFromRPApplication(ctx context.Context,
 		displayName = strings.TrimSpace(latest.Nickname)
 	}
 	if displayName == "" {
-		displayName = "?????"
+		displayName = "Профиль"
 	}
 
 	username := "user_" + discordID
