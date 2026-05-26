@@ -62,11 +62,11 @@
       "targets": [
         {
           "expr": "up{job=\"amy-backend\"}",
-          "legendFormat": "Backend",
+          "legendFormat": "Бэкенд",
           "refId": "A"
         }
       ],
-      "title": "Backend",
+      "title": "Бэкенд",
       "type": "stat"
     },
     {
@@ -122,11 +122,11 @@
       "targets": [
         {
           "expr": "up{job=\"amy-frontend\"}",
-          "legendFormat": "Frontend",
+          "legendFormat": "Фронтенд",
           "refId": "A"
         }
       ],
-      "title": "Frontend",
+      "title": "Фронтенд",
       "type": "stat"
     },
     {
@@ -182,11 +182,11 @@
       "targets": [
         {
           "expr": "amy_host_cpu_usage_percent{job=\"amy-node\"}",
-          "legendFormat": "Host CPU",
+          "legendFormat": "CPU хоста",
           "refId": "A"
         }
       ],
-      "title": "Host CPU",
+      "title": "CPU хоста",
       "type": "stat"
     },
     {
@@ -242,11 +242,11 @@
       "targets": [
         {
           "expr": "100 * amy_host_memory_used_bytes{job=\"amy-node\"} / amy_host_memory_total_bytes{job=\"amy-node\"}",
-          "legendFormat": "Host RAM",
+          "legendFormat": "ОЗУ хоста",
           "refId": "A"
         }
       ],
-      "title": "Host RAM",
+      "title": "ОЗУ хоста",
       "type": "stat"
     },
     {
@@ -302,11 +302,11 @@
       "targets": [
         {
           "expr": "sum(rate(node_network_receive_bytes_total{job=\"amy-node\",device!~\"lo|docker.*|br-.*|veth.*\"}[5m]))",
-          "legendFormat": "Traffic in",
+          "legendFormat": "Входящий трафик",
           "refId": "A"
         }
       ],
-      "title": "Traffic in",
+      "title": "Входящий трафик",
       "type": "stat"
     },
     {
@@ -362,11 +362,11 @@
       "targets": [
         {
           "expr": "sum(rate(node_network_transmit_bytes_total{job=\"amy-node\",device!~\"lo|docker.*|br-.*|veth.*\"}[5m]))",
-          "legendFormat": "Traffic out",
+          "legendFormat": "Исходящий трафик",
           "refId": "A"
         }
       ],
-      "title": "Traffic out",
+      "title": "Исходящий трафик",
       "type": "stat"
     },
     {
@@ -422,11 +422,11 @@
       "targets": [
         {
           "expr": "sum(amy_docker_system_size_bytes{job=\"amy-node\",state=\"total\"})",
-          "legendFormat": "Docker total",
+          "legendFormat": "Docker всего",
           "refId": "A"
         }
       ],
-      "title": "Docker total",
+      "title": "Docker всего",
       "type": "stat"
     },
     {
@@ -482,11 +482,11 @@
       "targets": [
         {
           "expr": "amy_minecraft_storage_bytes{job=\"amy-node\",section=\"total\"}",
-          "legendFormat": "Minecraft",
+          "legendFormat": "Minecraft-сервер",
           "refId": "A"
         }
       ],
-      "title": "Minecraft",
+      "title": "Minecraft-сервер",
       "type": "stat"
     },
     {
@@ -503,7 +503,7 @@
       },
       "id": 9,
       "panels": [],
-      "title": "CPU: host, processes, containers",
+      "title": "CPU: хост, процессы, контейнеры",
       "type": "row"
     },
     {
@@ -561,12 +561,12 @@
         {
           "refId": "A",
           "expr": "amy_host_cpu_usage_percent{job=\"amy-node\"}",
-          "legendFormat": "collector interval"
+          "legendFormat": "точный сбор"
         },
         {
           "refId": "B",
           "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{job=\"amy-node\",mode=\"idle\"}[5m])))",
-          "legendFormat": "node exporter 5m"
+          "legendFormat": "node-exporter 5м"
         },
         {
           "refId": "C",
@@ -574,7 +574,7 @@
           "legendFormat": "iowait"
         }
       ],
-      "title": "Exact host CPU load",
+      "title": "Точная нагрузка CPU хоста",
       "type": "timeseries"
     },
     {
@@ -661,8 +661,45 @@
           "refId": "A"
         }
       ],
-      "title": "Top CPU processes on host",
-      "type": "table"
+      "title": "Топ процессов по нагрузке CPU на хосте",
+      "type": "table",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "instance": true,
+              "job": true
+            },
+            "indexByName": {
+              "pid": 0,
+              "name": 1,
+              "cmdline": 2,
+              "Value": 3
+            },
+            "renameByName": {
+              "pid": "PID",
+              "name": "Процесс",
+              "cmdline": "Команда",
+              "Value": "CPU"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "field": "CPU",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ]
     },
     {
       "datasource": {
@@ -725,7 +762,7 @@
           "legendFormat": "{{name}}"
         }
       ],
-      "title": "Container CPU",
+      "title": "CPU контейнеров",
       "type": "bargauge"
     },
     {
@@ -786,7 +823,7 @@
           "legendFormat": "{{name}}"
         }
       ],
-      "title": "Container CPU over time",
+      "title": "CPU контейнеров во времени",
       "type": "timeseries"
     },
     {
@@ -803,7 +840,7 @@
       },
       "id": 14,
       "panels": [],
-      "title": "Memory",
+      "title": "Оперативная память",
       "type": "row"
     },
     {
@@ -861,20 +898,20 @@
         {
           "refId": "A",
           "expr": "amy_host_memory_used_bytes{job=\"amy-node\"}",
-          "legendFormat": "used"
+          "legendFormat": "занято"
         },
         {
           "refId": "B",
           "expr": "amy_host_memory_available_bytes{job=\"amy-node\"}",
-          "legendFormat": "available"
+          "legendFormat": "свободно"
         },
         {
           "refId": "C",
           "expr": "amy_host_memory_total_bytes{job=\"amy-node\"}",
-          "legendFormat": "total"
+          "legendFormat": "всего"
         }
       ],
-      "title": "Host RAM",
+      "title": "ОЗУ хоста",
       "type": "timeseries"
     },
     {
@@ -961,8 +998,45 @@
           "refId": "A"
         }
       ],
-      "title": "Top RAM processes on host",
-      "type": "table"
+      "title": "Топ процессов по нагрузке ОЗУ на хосте",
+      "type": "table",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "instance": true,
+              "job": true
+            },
+            "indexByName": {
+              "pid": 0,
+              "name": 1,
+              "cmdline": 2,
+              "Value": 3
+            },
+            "renameByName": {
+              "pid": "PID",
+              "name": "Процесс",
+              "cmdline": "Команда",
+              "Value": "ОЗУ"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "field": "ОЗУ",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ]
     },
     {
       "datasource": {
@@ -1025,7 +1099,7 @@
           "legendFormat": "{{name}}"
         }
       ],
-      "title": "Container RAM",
+      "title": "ОЗУ контейнеров",
       "type": "bargauge"
     },
     {
@@ -1042,7 +1116,7 @@
       },
       "id": 18,
       "panels": [],
-      "title": "Traffic",
+      "title": "Трафик",
       "type": "row"
     },
     {
@@ -1108,7 +1182,7 @@
           "legendFormat": "tx"
         }
       ],
-      "title": "Total VPS network traffic",
+      "title": "Суммарный сетевой трафик VPS",
       "type": "timeseries"
     },
     {
@@ -1169,15 +1243,15 @@
         {
           "refId": "A",
           "expr": "topk(10, rate(node_network_receive_bytes_total{job=\"amy-node\",device!~\"lo|docker.*|br-.*|veth.*\"}[5m]))",
-          "legendFormat": "{{device}} rx"
+          "legendFormat": "{{device}} вход"
         },
         {
           "refId": "B",
           "expr": "topk(10, rate(node_network_transmit_bytes_total{job=\"amy-node\",device!~\"lo|docker.*|br-.*|veth.*\"}[5m]))",
-          "legendFormat": "{{device}} tx"
+          "legendFormat": "{{device}} выход"
         }
       ],
-      "title": "Traffic by interfaces",
+      "title": "Трафик по интерфейсам",
       "type": "bargauge"
     },
     {
@@ -1235,15 +1309,15 @@
         {
           "refId": "A",
           "expr": "topk(10, rate(amy_docker_container_network_bytes_total{job=\"amy-node\",direction=\"rx\"}[5m]))",
-          "legendFormat": "{{name}} rx"
+          "legendFormat": "{{name}} вход"
         },
         {
           "refId": "B",
           "expr": "topk(10, rate(amy_docker_container_network_bytes_total{job=\"amy-node\",direction=\"tx\"}[5m]))",
-          "legendFormat": "{{name}} tx"
+          "legendFormat": "{{name}} выход"
         }
       ],
-      "title": "Container traffic",
+      "title": "Трафик контейнеров",
       "type": "timeseries"
     },
     {
@@ -1260,7 +1334,7 @@
       },
       "id": 22,
       "panels": [],
-      "title": "Storage: Docker and Minecraft",
+      "title": "Носитель: Docker и Minecraft",
       "type": "row"
     },
     {
@@ -1324,7 +1398,7 @@
           "legendFormat": "{{type}} {{state}}"
         }
       ],
-      "title": "Docker: storage usage",
+      "title": "Docker: чем занято место",
       "type": "bargauge"
     },
     {
@@ -1388,7 +1462,7 @@
           "legendFormat": "{{name}} {{type}}"
         }
       ],
-      "title": "Containers: rootfs, writable, logs",
+      "title": "Контейнеры: rootfs, writable, logs",
       "type": "bargauge"
     },
     {
@@ -1452,7 +1526,7 @@
           "legendFormat": "{{name}}"
         }
       ],
-      "title": "Docker volumes",
+      "title": "Тома Docker",
       "type": "bargauge"
     },
     {
@@ -1516,7 +1590,7 @@
           "legendFormat": "{{section}}"
         }
       ],
-      "title": "Minecraft server folders",
+      "title": "Папки Minecraft-сервера",
       "type": "bargauge"
     },
     {
@@ -1603,8 +1677,45 @@
           "refId": "A"
         }
       ],
-      "title": "Amy storage summary",
-      "type": "table"
+      "title": "Сводка по носителю Amy",
+      "type": "table",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "instance": true,
+              "job": true
+            },
+            "indexByName": {
+              "category": 0,
+              "section": 1,
+              "path": 2,
+              "Value": 3
+            },
+            "renameByName": {
+              "category": "Категория",
+              "section": "Раздел",
+              "path": "Путь",
+              "Value": "Размер"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "field": "Размер",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ]
     },
     {
       "collapsed": false,
@@ -1620,7 +1731,7 @@
       },
       "id": 28,
       "panels": [],
-      "title": "Disk and system details",
+      "title": "Диск и системные детали",
       "type": "row"
     },
     {
@@ -1678,15 +1789,15 @@
         {
           "refId": "A",
           "expr": "node_filesystem_size_bytes{job=\"amy-node\",mountpoint=\"/\",fstype!~\"tmpfs|overlay|squashfs\"} - node_filesystem_avail_bytes{job=\"amy-node\",mountpoint=\"/\",fstype!~\"tmpfs|overlay|squashfs\"}",
-          "legendFormat": "used"
+          "legendFormat": "занято"
         },
         {
           "refId": "B",
           "expr": "node_filesystem_avail_bytes{job=\"amy-node\",mountpoint=\"/\",fstype!~\"tmpfs|overlay|squashfs\"}",
-          "legendFormat": "available"
+          "legendFormat": "свободно"
         }
       ],
-      "title": "Root disk usage",
+      "title": "Использование корневого диска",
       "type": "timeseries"
     },
     {
@@ -1773,8 +1884,45 @@
           "refId": "A"
         }
       ],
-      "title": "Filesystems",
-      "type": "table"
+      "title": "Файловые системы",
+      "type": "table",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "instance": true,
+              "job": true
+            },
+            "indexByName": {
+              "device": 0,
+              "fstype": 1,
+              "mountpoint": 2,
+              "Value": 3
+            },
+            "renameByName": {
+              "device": "Устройство",
+              "fstype": "Тип FS",
+              "mountpoint": "Точка монтирования",
+              "Value": "Размер"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "field": "Размер",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ]
     }
   ],
   "refresh": "15s",
@@ -1807,6 +1955,6 @@
   "timezone": "browser",
   "title": "Amy System Dashboard",
   "uid": "amy-overview",
-  "version": 2,
+  "version": 3,
   "weekStart": ""
 }
