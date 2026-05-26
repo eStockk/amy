@@ -74,8 +74,8 @@ deploy:production:
     - |
       cd "$DEPLOY_PATH"
       docker rm -f amy_caddy >/dev/null 2>&1 || true
-      docker compose -p "$COMPOSE_PROJECT_NAME" -f docker-compose.yml down --remove-orphans
-      docker compose -p "$COMPOSE_PROJECT_NAME" -f docker-compose.yml up -d --build
+      docker rm -f "$COMPOSE_PROJECT_NAME-docker-prune-1" >/dev/null 2>&1 || true
+      docker compose -p "$COMPOSE_PROJECT_NAME" -f docker-compose.yml up -d --build --remove-orphans
       docker image prune -f
   environment:
     name: production

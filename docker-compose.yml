@@ -186,6 +186,7 @@ services:
     environment:
       DOCKER_PRUNE_INTERVAL_SECONDS: ${DOCKER_PRUNE_INTERVAL_SECONDS:-86400}
       DOCKER_BUILD_CACHE_RETENTION: ${DOCKER_BUILD_CACHE_RETENTION:-24h}
+      DOCKER_PRUNE_INITIAL_DELAY_SECONDS: ${DOCKER_PRUNE_INITIAL_DELAY_SECONDS:-300}
     command:
       - /bin/sh
       - -c
@@ -193,12 +194,16 @@ services:
         set -eu
         interval=$${DOCKER_PRUNE_INTERVAL_SECONDS:-86400}
         retention=$${DOCKER_BUILD_CACHE_RETENTION:-24h}
+        initial_delay=$${DOCKER_PRUNE_INITIAL_DELAY_SECONDS:-300}
         [ "$$interval" -gt 0 ] || interval=86400
+        [ "$$initial_delay" -ge 0 ] || initial_delay=300
+        if [ "$$initial_delay" -gt 0 ]; then
+          echo "[$$(date -Iseconds)] Docker prune initial delay: $$initial_delay seconds"
+          sleep "$$initial_delay"
+        fi
         while true; do
           echo "[$$(date -Iseconds)] pruning Docker build cache older than $$retention"
           docker builder prune -af --filter "until=$$retention" || true
-          echo "[$$(date -Iseconds)] pruning stopped containers"
-          docker container prune -f || true
           echo "[$$(date -Iseconds)] pruning dangling images"
           docker image prune -f || true
           echo "[$$(date -Iseconds)] Docker prune complete; sleeping $$interval seconds"
