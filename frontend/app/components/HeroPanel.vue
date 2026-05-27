@@ -44,7 +44,7 @@ const router = useRouter()
 const { authenticated, user, loginUrl, refresh } = useAuth()
 const { status, pending: statusPending } = useServerStatus()
 
-const serverAddress = computed(() => status.value?.address || 'play.amy-world.ru')
+const serverAddress = computed(() => status.value?.address || 'amyworld.ru')
 const serverOnline = computed(() => Boolean(status.value?.online))
 const onlineLabel = computed(() => {
   if (statusPending.value) return 'Проверяем онлайн'
