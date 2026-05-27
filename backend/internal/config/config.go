@@ -22,6 +22,7 @@ type Config struct {
 	VAPIDPrivateKey        string
 	SupportPushSubject     string
 	SupportStorageDir      string
+	TenorAPIKey            string
 }
 
 func Load() Config {
@@ -45,6 +46,7 @@ func Load() Config {
 		VAPIDPrivateKey:        getEnv("VAPID_PRIVATE_KEY", ""),
 		SupportPushSubject:     getEnv("SUPPORT_PUSH_SUBJECT", "mailto:support@amyworld.ru"),
 		SupportStorageDir:      getEnv("SUPPORT_STORAGE_DIR", "data/support"),
+		TenorAPIKey:            getEnv("TENOR_API_KEY", ""),
 	}
 }
 

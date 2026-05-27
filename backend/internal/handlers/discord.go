@@ -5,10 +5,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -24,6 +27,9 @@ type DiscordAuthHandler struct {
 	ticketWebhookURL string
 	rpWebhookURL     string
 	rpModeratorIDs   map[string]struct{}
+	discordBotToken  string
+	discordGuildID   string
+	httpClient       *http.Client
 }
 
 type discordTokenResponse struct {
@@ -55,6 +61,7 @@ type discordUserDoc struct {
 	FirstAuthenticatedAt *time.Time `json:"-"`
 	CreatedAt            time.Time  `json:"createdAt,omitempty"`
 	UpdatedAt            time.Time  `json:"updatedAt,omitempty"`
+	ProfileThemeRoleID   string     `json:"profileThemeRoleId,omitempty"`
 }
 
 type discordMeResponse struct {
@@ -82,21 +89,30 @@ type publicProfileResponse struct {
 }
 
 type publicProfile struct {
-	ID                     string     `json:"id"`
-	Username               string     `json:"username"`
-	DisplayName            string     `json:"displayName"`
-	AvatarURL              string     `json:"avatarUrl"`
-	RPFirstName            string     `json:"rpFirstName,omitempty"`
-	RPLastName             string     `json:"rpLastName,omitempty"`
-	RPName                 string     `json:"rpName,omitempty"`
-	MinecraftNickname      string     `json:"minecraftNickname,omitempty"`
-	Race                   string     `json:"race,omitempty"`
-	Gender                 string     `json:"gender,omitempty"`
-	BirthDate              string     `json:"birthDate,omitempty"`
-	DiscordRoles           []string   `json:"discordRoles,omitempty"`
-	HasAcceptedApplication bool       `json:"hasAcceptedApplication"`
-	JoinedAt               *time.Time `json:"joinedAt,omitempty"`
-	IsOnline               bool       `json:"isOnline"`
+	ID                     string              `json:"id"`
+	Username               string              `json:"username"`
+	DisplayName            string              `json:"displayName"`
+	AvatarURL              string              `json:"avatarUrl"`
+	RPFirstName            string              `json:"rpFirstName,omitempty"`
+	RPLastName             string              `json:"rpLastName,omitempty"`
+	RPName                 string              `json:"rpName,omitempty"`
+	MinecraftNickname      string              `json:"minecraftNickname,omitempty"`
+	Race                   string              `json:"race,omitempty"`
+	Gender                 string              `json:"gender,omitempty"`
+	BirthDate              string              `json:"birthDate,omitempty"`
+	DiscordRoles           []publicDiscordRole `json:"discordRoles,omitempty"`
+	ThemeRoleID            string              `json:"themeRoleId,omitempty"`
+	ThemeColor             string              `json:"themeColor,omitempty"`
+	HasAcceptedApplication bool                `json:"hasAcceptedApplication"`
+	JoinedAt               *time.Time          `json:"joinedAt,omitempty"`
+	IsOnline               bool                `json:"isOnline"`
+}
+
+type publicDiscordRole struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Color    string `json:"color,omitempty"`
+	Position int    `json:"position"`
 }
 
 type rpApplicationSummaryOut struct {
@@ -126,7 +142,9 @@ func NewDiscordAuthHandler(
 	frontendURL,
 	ticketWebhookURL,
 	rpWebhookURL,
-	rpModeratorIDsRaw string,
+	rpModeratorIDsRaw,
+	discordBotToken,
+	discordGuildID string,
 ) *DiscordAuthHandler {
 	return &DiscordAuthHandler{
 		db:               db,
@@ -137,6 +155,9 @@ func NewDiscordAuthHandler(
 		ticketWebhookURL: ticketWebhookURL,
 		rpWebhookURL:     rpWebhookURL,
 		rpModeratorIDs:   parseDiscordIDSet(rpModeratorIDsRaw),
+		discordBotToken:  strings.TrimSpace(discordBotToken),
+		discordGuildID:   strings.TrimSpace(discordGuildID),
+		httpClient:       &http.Client{Timeout: 8 * time.Second},
 	}
 }
 
@@ -413,7 +434,7 @@ func (h *DiscordAuthHandler) loadDiscordUser(ctx context.Context, discordID stri
 		ctx,
 		`SELECT discord_id, username, global_name, email, avatar,
 		        rp_first_name, rp_last_name, acceptance_status,
-		        last_seen_at, presence_active, first_authenticated_at, created_at, updated_at
+		        last_seen_at, presence_active, first_authenticated_at, created_at, updated_at, profile_theme_role_id
 		 FROM discord_users
 		 WHERE discord_id = $1`,
 		discordID,
@@ -431,6 +452,7 @@ func (h *DiscordAuthHandler) loadDiscordUser(ctx context.Context, discordID stri
 		&firstAuthenticatedAt,
 		&user.CreatedAt,
 		&user.UpdatedAt,
+		&user.ProfileThemeRoleID,
 	)
 	if err != nil {
 		return nil, err
@@ -577,6 +599,7 @@ func toPublicProfile(user discordUserDoc, now time.Time) *publicProfile {
 		RPFirstName: user.RPFirstName,
 		RPLastName:  user.RPLastName,
 		IsOnline:    isUserOnline(user, now),
+		ThemeRoleID: strings.TrimSpace(user.ProfileThemeRoleID),
 	}
 
 	if user.FirstAuthenticatedAt != nil && !user.FirstAuthenticatedAt.IsZero() {
@@ -601,18 +624,195 @@ func (h *DiscordAuthHandler) enrichPublicProfile(ctx context.Context, profile *p
 		return err
 	}
 
-	var roles []string
-	err := h.db.QueryRowContext(ctx, `SELECT roles FROM discord_member_states WHERE discord_id = $1`, profile.ID).Scan(&roles)
+	var rawRoles string
+	var rawRoleIDs string
+	err := h.db.QueryRowContext(ctx, `SELECT array_to_string(roles, E'\n'), array_to_string(role_ids, E'\n') FROM discord_member_states WHERE discord_id = $1`, profile.ID).Scan(&rawRoles, &rawRoleIDs)
 	if err == nil {
-		profile.DiscordRoles = filterPublicDiscordRoles(roles)
+		roles := splitPostgresTextArray(rawRoles)
+		roleIDs := splitPostgresTextArray(rawRoleIDs)
+		profile.DiscordRoles = h.publicDiscordRoles(ctx, roles, roleIDs)
+		if profile.ThemeRoleID == "" || !hasPublicRoleID(profile.DiscordRoles, profile.ThemeRoleID) {
+			profile.ThemeRoleID = highestPublicRole(profile.DiscordRoles).ID
+		}
+		profile.ThemeColor = roleColorByID(profile.DiscordRoles, profile.ThemeRoleID)
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
 	return nil
 }
 
+func (h *DiscordAuthHandler) UpdateProfileTheme(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	user, err := h.requireAuthenticatedUser(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	var payload struct {
+		RoleID string `json:"roleId"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 8*1024)).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	roleID := strings.TrimSpace(payload.RoleID)
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	var rawRoleIDs string
+	if err := h.db.QueryRowContext(ctx, `SELECT array_to_string(role_ids, E'\n') FROM discord_member_states WHERE discord_id = $1`, user.DiscordID).Scan(&rawRoleIDs); err != nil {
+		writeError(w, http.StatusForbidden, "discord roles are not synced")
+		return
+	}
+	roleIDs := splitPostgresTextArray(rawRoleIDs)
+	if roleID != "" && !stringSliceContains(roleIDs, roleID) {
+		writeError(w, http.StatusForbidden, "role is not available")
+		return
+	}
+	if _, err := h.db.ExecContext(ctx, `UPDATE discord_users SET profile_theme_role_id = $1, updated_at = $2 WHERE discord_id = $3`, roleID, time.Now().UTC(), user.DiscordID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save theme")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "roleId": roleID})
+}
+
 func (h *DiscordAuthHandler) loadAcceptedApplicationForDiscord(ctx context.Context, discordID string) (*rpApplicationDoc, error) {
 	return scanRPApplication(h.db.QueryRowContext(ctx, rpApplicationSelectSQL+` WHERE discord_id = $1 AND status IN ('accepted', 'approved') ORDER BY updated_at DESC, created_at DESC LIMIT 1`, discordID))
+}
+
+func (h *DiscordAuthHandler) publicDiscordRoles(ctx context.Context, roleNames, roleIDs []string) []publicDiscordRole {
+	meta := map[string]discordGuildRole{}
+	if h.discordBotToken != "" && h.discordGuildID != "" {
+		if roles, err := h.fetchGuildRoles(ctx); err == nil {
+			for _, role := range roles {
+				meta[role.ID] = role
+			}
+		}
+	}
+
+	result := make([]publicDiscordRole, 0, len(roleIDs)+len(roleNames))
+	seen := map[string]struct{}{}
+	for index, roleID := range roleIDs {
+		roleID = strings.TrimSpace(roleID)
+		if roleID == "" {
+			continue
+		}
+		role := meta[roleID]
+		name := strings.TrimSpace(role.Name)
+		if name == "" && index < len(roleNames) {
+			name = strings.TrimSpace(roleNames[index])
+		}
+		if name == "" || strings.EqualFold(name, "@everyone") {
+			continue
+		}
+		seen[roleID] = struct{}{}
+		seen[strings.ToLower(name)] = struct{}{}
+		result = append(result, publicDiscordRole{
+			ID:       roleID,
+			Name:     name,
+			Color:    discordColorHex(role.Color),
+			Position: role.Position,
+		})
+	}
+	for _, name := range filterPublicDiscordRoles(roleNames) {
+		key := strings.ToLower(name)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		result = append(result, publicDiscordRole{ID: key, Name: name})
+		seen[key] = struct{}{}
+	}
+	sort.SliceStable(result, func(i, j int) bool {
+		return result[i].Position > result[j].Position
+	})
+	return result
+}
+
+func (h *DiscordAuthHandler) fetchGuildRoles(ctx context.Context) ([]discordGuildRole, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://discord.com/api/v10/guilds/"+url.PathEscape(h.discordGuildID)+"/roles", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bot "+h.discordBotToken)
+	req.Header.Set("User-Agent", "amy-world-profile-roles/1.0")
+	resp, err := h.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return nil, errUnexpectedStatus(resp.StatusCode)
+	}
+	var roles []discordGuildRole
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1024*1024)).Decode(&roles); err != nil {
+		return nil, err
+	}
+	return roles, nil
+}
+
+func highestPublicRole(roles []publicDiscordRole) publicDiscordRole {
+	for _, role := range roles {
+		if role.Color != "" {
+			return role
+		}
+	}
+	if len(roles) > 0 {
+		return roles[0]
+	}
+	return publicDiscordRole{}
+}
+
+func roleColorByID(roles []publicDiscordRole, roleID string) string {
+	for _, role := range roles {
+		if role.ID == roleID {
+			return role.Color
+		}
+	}
+	return ""
+}
+
+func hasPublicRoleID(roles []publicDiscordRole, roleID string) bool {
+	for _, role := range roles {
+		if role.ID == roleID {
+			return true
+		}
+	}
+	return false
+}
+
+func discordColorHex(color int) string {
+	if color <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("#%06x", color)
+}
+
+func stringSliceContains(items []string, value string) bool {
+	value = strings.TrimSpace(value)
+	for _, item := range items {
+		if strings.TrimSpace(item) == value {
+			return true
+		}
+	}
+	return false
+}
+
+func splitPostgresTextArray(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.Split(raw, "\n")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			result = append(result, part)
+		}
+	}
+	return result
 }
 
 func applyRPApplicationToProfile(profile *publicProfile, app *rpApplicationDoc) {
@@ -650,9 +850,6 @@ func filterPublicDiscordRoles(roles []string) []string {
 		}
 		seen[key] = struct{}{}
 		result = append(result, role)
-		if len(result) == 12 {
-			break
-		}
 	}
 	return result
 }

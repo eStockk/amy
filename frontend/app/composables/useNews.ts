@@ -9,6 +9,9 @@ export type NewsItem = {
   category?: string
   author?: string
   authorId?: string
+  likeCount?: number
+  commentCount?: number
+  likedByMe?: boolean
   createdAt?: string
   variant?: 'pink' | 'blue' | 'green'
 }

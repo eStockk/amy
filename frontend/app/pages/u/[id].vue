@@ -11,7 +11,7 @@
       <NuxtLink class="ghost" to="/">На главную</NuxtLink>
     </section>
 
-    <section v-else-if="profile" class="shell">
+    <section v-else-if="profile" class="shell" :style="profileThemeStyle">
       <aside class="left-col">
         <article class="panel identity-card">
           <div class="avatar-box">
@@ -28,6 +28,26 @@
             <span class="chip" v-if="profile.joinedAt">На сайте с {{ formatDate(profile.joinedAt, true) }}</span>
             <span class="chip" v-else>Дата регистрации обновится после входа</span>
           </div>
+
+          <dl v-if="profile.hasAcceptedApplication" class="facts">
+            <div v-for="fact in profileFacts" :key="fact.label">
+              <dt>{{ fact.label }}</dt>
+              <dd>{{ fact.value }}</dd>
+            </div>
+          </dl>
+
+          <div v-if="profile.discordRoles?.length" class="role-cloud">
+            <span v-for="role in profile.discordRoles" :key="role.id" :style="{ '--role-color': role.color || '#8d93a6' }">
+              {{ role.name }}
+            </span>
+          </div>
+
+          <label v-if="isOwner && themeRoles.length" class="theme-picker">
+            <span>Окрас профиля</span>
+            <select v-model="selectedThemeRoleId" @change="saveThemeRole">
+              <option v-for="role in themeRoles" :key="role.id" :value="role.id">{{ role.name }}</option>
+            </select>
+          </label>
 
           <div class="actions">
             <NuxtLink v-if="profile.hasAcceptedApplication" class="ghost chat-link" to="/chat" aria-label="Открыть общий чат">
@@ -63,37 +83,6 @@
       </aside>
 
       <div class="right-col">
-        <section class="panel info-grid">
-          <article class="info-card highlight">
-            <p class="label">RP имя и фамилия</p>
-            <strong>{{ fullRPName }}</strong>
-            <p class="muted">Данные берутся из принятой RP-заявки.</p>
-          </article>
-          <article class="info-card">
-            <p class="label">Игровой ник</p>
-            <strong>{{ profile.minecraftNickname || 'Не указан' }}</strong>
-          </article>
-          <article class="info-card">
-            <p class="label">Раса</p>
-            <strong>{{ profile.race || 'Не указана' }}</strong>
-          </article>
-          <article class="info-card">
-            <p class="label">Пол</p>
-            <strong>{{ profile.gender || 'Не указан' }}</strong>
-          </article>
-          <article class="info-card">
-            <p class="label">Дата рождения</p>
-            <strong>{{ profile.birthDate ? formatDate(profile.birthDate, true) : 'Не указана' }}</strong>
-          </article>
-          <article class="info-card roles-card">
-            <p class="label">Роли Discord</p>
-            <div v-if="profile.discordRoles?.length" class="role-list">
-              <span v-for="role in profile.discordRoles" :key="role">{{ role }}</span>
-            </div>
-            <strong v-else>Нет публичных ролей</strong>
-          </article>
-        </section>
-
         <section v-if="isOwner" class="panel application-card">
           <div class="section-head">
             <h3>RP-заявка</h3>
@@ -135,6 +124,9 @@
               :variant="post.variant"
               :image-url="post.imageUrl"
               :author="post.author"
+              :like-count="post.likeCount"
+              :comment-count="post.commentCount"
+              :liked-by-me="post.likedByMe"
             />
           </div>
         </section>
@@ -251,7 +243,14 @@ type PublicProfile = {
   race?: string
   gender?: string
   birthDate?: string
-  discordRoles?: string[]
+  discordRoles?: Array<{
+    id: string
+    name: string
+    color?: string
+    position: number
+  }>
+  themeRoleId?: string
+  themeColor?: string
   hasAcceptedApplication?: boolean
   joinedAt?: string
   isOnline?: boolean
@@ -294,6 +293,7 @@ const deleteMessage = ref('')
 const deleteError = ref(false)
 
 const rpModalOpen = ref(false)
+const selectedThemeRoleId = ref('')
 
 const form = reactive({
   nickname: '',
@@ -316,6 +316,29 @@ const fullRPName = computed(() => {
   const full = `${profile.value.rpFirstName || ''} ${profile.value.rpLastName || ''}`.trim()
   return full || '\u041d\u0435 \u0443\u043a\u0430\u0437\u0430\u043d'
 })
+
+const profileFacts = computed(() => {
+  if (!profile.value) return []
+  return [
+    { label: 'RP', value: fullRPName.value },
+    { label: 'Ник', value: profile.value.minecraftNickname || 'Не указан' },
+    { label: 'Раса', value: profile.value.race || 'Не указана' },
+    { label: 'Пол', value: profile.value.gender || 'Не указан' },
+    { label: 'Дата рождения', value: profile.value.birthDate ? formatDate(profile.value.birthDate, true) : 'Не указана' }
+  ]
+})
+
+const themeRoles = computed(() => (profile.value?.discordRoles || []).filter((role) => role.color))
+
+const profileThemeColor = computed(() => {
+  const selected = themeRoles.value.find((role) => role.id === selectedThemeRoleId.value)
+  return selected?.color || profile.value?.themeColor || '#e45e38'
+})
+
+const profileThemeStyle = computed(() => ({
+  '--profile-accent': profileThemeColor.value,
+  '--profile-accent-soft': `${profileThemeColor.value}33`
+}))
 
 const statusLabelPublic = '\u041f\u0443\u0431\u043b\u0438\u0447\u043d\u044b\u0439 \u0432\u0438\u0434 \u043f\u0440\u043e\u0444\u0438\u043b\u044f'
 const statusLabelAccepted = '\u041f\u0440\u0438\u043d\u044f\u0442\u0430'
@@ -447,6 +470,7 @@ const loadProfile = async () => {
     })
 
     profile.value = response.profile
+    selectedThemeRoleId.value = response.profile.themeRoleId || response.profile.discordRoles?.find((role) => role.color)?.id || ''
 
     if (isOwner.value && user.value) {
       profile.value = {
@@ -635,6 +659,23 @@ const closeRpModal = () => {
   rpModalOpen.value = false
 }
 
+const saveThemeRole = async () => {
+  if (!isOwner.value || !selectedThemeRoleId.value) return
+  try {
+    await $fetch(`${config.public.apiBase}/profiles/theme`, {
+      method: 'POST',
+      credentials: 'include',
+      body: { roleId: selectedThemeRoleId.value }
+    })
+    if (profile.value) {
+      profile.value.themeRoleId = selectedThemeRoleId.value
+      profile.value.themeColor = profileThemeColor.value
+    }
+  } catch {
+    selectedThemeRoleId.value = profile.value?.themeRoleId || ''
+  }
+}
+
 const handleEscape = (event: KeyboardEvent) => {
   if (event.key === 'Escape' && rpModalOpen.value) {
     rpModalOpen.value = false
@@ -678,6 +719,8 @@ watch(rpModalOpen, (opened) => {
   display: grid;
   grid-template-columns: minmax(280px, 330px) minmax(0, 1fr);
   gap: 16px;
+  --profile-accent: #e45e38;
+  --profile-accent-soft: rgba(228, 94, 56, 0.2);
 }
 
 .left-col,
@@ -688,9 +731,9 @@ watch(rpModalOpen, (opened) => {
 }
 
 .panel {
-  border: 1px solid rgba(228, 94, 56, 0.24);
+  border: 1px solid color-mix(in srgb, var(--profile-accent), transparent 68%);
   border-radius: 8px;
-  background: radial-gradient(circle at 0% 0%, rgba(228, 94, 56, 0.2), transparent 45%),
+  background: radial-gradient(circle at 0% 0%, var(--profile-accent-soft), transparent 45%),
     linear-gradient(160deg, rgba(22, 16, 15, 0.95), rgba(12, 11, 14, 0.98));
   backdrop-filter: blur(10px);
   box-shadow: 0 14px 32px rgba(0, 0, 0, 0.4);
@@ -789,6 +832,64 @@ h1 {
   gap: 8px;
 }
 
+.facts {
+  display: grid;
+  gap: 7px;
+  margin: 2px 0;
+}
+
+.facts div {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
+
+.facts dt,
+.facts dd {
+  margin: 0;
+}
+
+.facts dt,
+.theme-picker span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.facts dd {
+  overflow-wrap: anywhere;
+  font-weight: 700;
+}
+
+.role-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.role-cloud span {
+  border: 1px solid color-mix(in srgb, var(--role-color), transparent 45%);
+  background: color-mix(in srgb, var(--role-color), transparent 84%);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+.theme-picker {
+  display: grid;
+  gap: 6px;
+}
+
+.theme-picker select {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  padding: 9px 10px;
+}
+
 .chat-link {
   gap: 8px;
 }
@@ -808,69 +909,18 @@ h1 {
   gap: 8px;
 }
 
-.info-grid {
-  padding: 12px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.info-card {
-  border-radius: 8px;
-  border: 1px solid rgba(228, 94, 56, 0.26);
-  background: rgba(228, 94, 56, 0.08);
-  padding: 12px;
-  display: grid;
-  gap: 8px;
-}
-
-.info-card.highlight {
-  background: linear-gradient(145deg, rgba(228, 94, 56, 0.22), rgba(20, 16, 16, 0.95));
-  border-color: rgba(228, 94, 56, 0.34);
-}
-
-.label {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: rgba(255, 255, 255, 0.7);
-}
-
-.info-card strong {
-  font-size: clamp(18px, 2vw, 24px);
-  font-family: 'Neue Machine', 'Montserrat', sans-serif;
-  overflow-wrap: anywhere;
-}
-
-.roles-card {
-  align-content: start;
-}
-
-.role-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-}
-
-.role-list span {
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.07);
-  padding: 6px 9px;
-  color: var(--text);
-  font-size: 12px;
-}
 
 .application-card,
 .posts-card {
   display: grid;
   gap: 12px;
+  padding: 14px;
 }
 
 .posts-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
 }
 
 .section-head {
@@ -1043,7 +1093,6 @@ textarea {
     min-height: auto;
   }
 
-  .info-grid,
   .posts-grid,
   .form-grid,
   .row {
@@ -1080,8 +1129,7 @@ textarea {
 
   .identity-card,
   .summary-card,
-  .application-card,
-  .info-grid {
+  .application-card {
     padding: 12px;
   }
 

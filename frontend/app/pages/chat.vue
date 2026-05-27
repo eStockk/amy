@@ -18,12 +18,8 @@
         </button>
       </header>
 
-      <div v-if="!authenticated" class="empty">
-        Войдите через Discord, чтобы открыть чат игроков.
-      </div>
-      <div v-else-if="!hasChatAccess" class="empty">
-        Чат доступен игрокам с принятой RP-заявкой.
-      </div>
+      <div v-if="!authenticated" class="empty">Войдите через Discord, чтобы открыть чат игроков.</div>
+      <div v-else-if="!hasChatAccess" class="empty">Чат доступен игрокам с принятой RP-заявкой.</div>
       <template v-else>
         <div ref="messageList" class="messages">
           <article v-for="item in messages" :key="item.id" class="message">
@@ -42,14 +38,30 @@
 
         <form class="composer" @submit.prevent="sendMessage">
           <textarea v-model.trim="messageText" rows="3" maxlength="1000" placeholder="Сообщение в чат..."></textarea>
-          <input v-model.trim="gifUrl" type="url" placeholder="Ссылка на Tenor GIF" />
-          <button class="primary" type="submit" :disabled="sending || (!messageText && !gifUrl)">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 12 20 4l-4 16-4-6-8-2Z" />
-              <path d="m12 14 4-5" />
-            </svg>
-            Отправить
-          </button>
+          <div class="send-tools">
+            <div v-if="gifPanelOpen" class="gif-panel">
+              <input v-model.trim="gifQuery" type="search" placeholder="Поиск Tenor GIF" @input="debouncedSearchGIFs" />
+              <div v-if="gifLoading" class="gif-empty">Ищем...</div>
+              <div v-else-if="gifError" class="gif-empty">{{ gifError }}</div>
+              <div v-else class="gif-grid">
+                <button v-for="gif in gifs" :key="gif.id" type="button" @click="selectGIF(gif.url)">
+                  <img :src="gif.preview" :alt="gif.title || 'gif'" loading="lazy" referrerpolicy="no-referrer" />
+                </button>
+              </div>
+            </div>
+            <button class="tool-button" type="button" title="Tenor GIF" @click="toggleGIFPanel">GIF</button>
+            <button class="primary" type="submit" :disabled="sending || (!messageText && !gifUrl)">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 12 20 4l-4 16-4-6-8-2Z" />
+                <path d="m12 14 4-5" />
+              </svg>
+              Отправить
+            </button>
+          </div>
+          <div v-if="gifUrl" class="selected-gif">
+            <span>GIF выбрана</span>
+            <button type="button" @click="gifUrl = ''">Убрать</button>
+          </div>
           <p v-if="errorText" class="error">{{ errorText }}</p>
         </form>
       </template>
@@ -71,6 +83,13 @@ type ChatMessage = {
   createdAt: string
 }
 
+type TenorGIF = {
+  id: string
+  url: string
+  preview: string
+  title?: string
+}
+
 const config = useRuntimeConfig()
 const { authenticated, user, refresh } = useAuth()
 
@@ -81,7 +100,13 @@ const errorText = ref('')
 const loading = ref(false)
 const sending = ref(false)
 const messageList = ref<HTMLElement | null>(null)
+const gifPanelOpen = ref(false)
+const gifQuery = ref('')
+const gifs = ref<TenorGIF[]>([])
+const gifLoading = ref(false)
+const gifError = ref('')
 let pollTimer: ReturnType<typeof setInterval> | undefined
+let gifSearchTimer: ReturnType<typeof setTimeout> | undefined
 
 const hasChatAccess = computed(() => {
   const status = user.value?.rpApplication?.status
@@ -96,6 +121,7 @@ const loadMessages = async () => {
       credentials: 'include'
     })
     messages.value = response.messages
+    errorText.value = ''
     await nextTick()
     messageList.value?.scrollTo({ top: messageList.value.scrollHeight })
   } catch (error: unknown) {
@@ -120,6 +146,7 @@ const sendMessage = async () => {
     })
     messageText.value = ''
     gifUrl.value = ''
+    gifPanelOpen.value = false
     messages.value = response.messages
     await nextTick()
     messageList.value?.scrollTo({ top: messageList.value.scrollHeight, behavior: 'smooth' })
@@ -128,6 +155,37 @@ const sendMessage = async () => {
   } finally {
     sending.value = false
   }
+}
+
+const searchGIFs = async () => {
+  gifLoading.value = true
+  gifError.value = ''
+  try {
+    const response = await $fetch<{ results: TenorGIF[] }>(`${config.public.apiBase}/tenor/search`, {
+      credentials: 'include',
+      query: { q: gifQuery.value, limit: 16 }
+    })
+    gifs.value = response.results
+  } catch {
+    gifError.value = 'Tenor GIF пока не настроен.'
+  } finally {
+    gifLoading.value = false
+  }
+}
+
+const debouncedSearchGIFs = () => {
+  if (gifSearchTimer) clearTimeout(gifSearchTimer)
+  gifSearchTimer = setTimeout(searchGIFs, 300)
+}
+
+const toggleGIFPanel = async () => {
+  gifPanelOpen.value = !gifPanelOpen.value
+  if (gifPanelOpen.value && gifs.value.length === 0) await searchGIFs()
+}
+
+const selectGIF = (url: string) => {
+  gifUrl.value = url
+  gifPanelOpen.value = false
 }
 
 const formatDate = (raw: string) => new Intl.DateTimeFormat('ru-RU', {
@@ -145,6 +203,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   if (pollTimer) clearInterval(pollTimer)
+  if (gifSearchTimer) clearTimeout(gifSearchTimer)
 })
 </script>
 
@@ -179,21 +238,15 @@ p {
   margin: 0;
 }
 
-.eyebrow {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0;
+.eyebrow,
+.muted,
+.empty {
   color: var(--muted);
 }
 
 h1 {
   margin: 0;
   font-family: 'Neue Machine', 'Montserrat', sans-serif;
-}
-
-.muted,
-.empty {
-  color: var(--muted);
 }
 
 .empty {
@@ -256,13 +309,13 @@ h1 {
 
 .composer {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(180px, 280px) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   align-items: end;
 }
 
 textarea,
-input {
+.gif-panel input {
   width: 100%;
   box-sizing: border-box;
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -277,8 +330,17 @@ textarea {
   resize: none;
 }
 
+.send-tools {
+  position: relative;
+  display: grid;
+  grid-template-columns: 54px auto;
+  gap: 8px;
+  align-items: end;
+}
+
 .ghost,
-.primary {
+.primary,
+.tool-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -290,7 +352,8 @@ textarea {
   font-weight: 700;
 }
 
-.ghost {
+.ghost,
+.tool-button {
   background: rgba(255, 255, 255, 0.08);
   color: var(--text);
 }
@@ -317,6 +380,66 @@ textarea {
   cursor: not-allowed;
 }
 
+.gif-panel {
+  position: absolute;
+  right: 0;
+  bottom: 52px;
+  width: min(360px, 88vw);
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  background: #17181f;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.42);
+  z-index: 3;
+}
+
+.gif-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.gif-grid button {
+  border: 0;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0;
+  overflow: hidden;
+  aspect-ratio: 1;
+  cursor: pointer;
+}
+
+.gif-grid img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.gif-empty,
+.selected-gif {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.selected-gif {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.selected-gif button {
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  padding: 5px 9px;
+  cursor: pointer;
+}
+
 .error {
   grid-column: 1 / -1;
   color: #ff9f9f;
@@ -327,6 +450,10 @@ textarea {
   .composer {
     grid-template-columns: 1fr;
     display: grid;
+  }
+
+  .send-tools {
+    justify-content: start;
   }
 
   .messages {

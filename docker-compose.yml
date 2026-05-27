@@ -70,6 +70,7 @@ services:
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       SUPPORT_PUSH_SUBJECT: ${SUPPORT_PUSH_SUBJECT:-mailto:support@amyworld.ru}
       SUPPORT_STORAGE_DIR: ${SUPPORT_STORAGE_DIR:-/var/lib/amy/support}
+      TENOR_API_KEY: ${TENOR_API_KEY:-}
     ports:
       - "${BACKEND_BIND:-127.0.0.1}:${BACKEND_PORT:-8080}:8080"
     volumes:

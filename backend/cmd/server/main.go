@@ -48,8 +48,9 @@ func main() {
 
 	healthHandler := handlers.NewHealthHandler(postgres)
 	playerHandler := handlers.NewPlayerHandler(postgres)
-	newsHandler := handlers.NewNewsHandler(postgres, cfg.TelegramNewsChannel, cfg.DiscordBotToken, cfg.DiscordNewsChannelID)
+	newsHandler := handlers.NewNewsHandler(postgres, cfg.TelegramNewsChannel, cfg.DiscordBotToken, cfg.DiscordNewsChannelID, cfg.DiscordGuildID)
 	communityChatHandler := handlers.NewCommunityChatHandler(postgres, cfg.DiscordBotToken)
+	tenorHandler := handlers.NewTenorHandler(cfg.TenorAPIKey)
 	supportHandler := handlers.NewSupportHandler(postgres, cfg.DiscordTicketWebhook, cfg.FrontendURL, cfg.VAPIDPublicKey, cfg.VAPIDPrivateKey, cfg.SupportPushSubject, cfg.SupportStorageDir)
 	discordMemberSync := handlers.NewDiscordMemberSync(postgres, cfg.DiscordBotToken, cfg.DiscordGuildID, cfg.DiscordTicketChannelID, supportHandler.NotifyTicketReply)
 	serverStatusHandler := handlers.NewServerStatusHandler(cfg.MinecraftServerAddr)
@@ -62,6 +63,8 @@ func main() {
 		cfg.DiscordTicketWebhook,
 		cfg.DiscordRPWebhook,
 		cfg.RPModeratorIDs,
+		cfg.DiscordBotToken,
+		cfg.DiscordGuildID,
 	)
 
 	syncCtx, syncCancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -77,13 +80,17 @@ func main() {
 	mux.HandleFunc("/api/players", playerHandler.List)
 	mux.HandleFunc("/api/players/register", playerHandler.Register)
 	mux.HandleFunc("/api/news", newsHandler.List)
+	mux.HandleFunc("/api/news/likes", newsHandler.Like)
+	mux.HandleFunc("/api/news/comments", newsHandler.Comments)
 	mux.HandleFunc("/api/community/chat", communityChatHandler.Handle)
+	mux.HandleFunc("/api/tenor/search", tenorHandler.Search)
 	mux.HandleFunc("/api/server/status", serverStatusHandler.Handle)
 	mux.HandleFunc("/api/auth/discord/start", discordHandler.Start)
 	mux.HandleFunc("/api/auth/discord/callback", discordHandler.Callback)
 	mux.HandleFunc("/api/auth/me", discordHandler.Me)
 	mux.HandleFunc("/api/auth/logout", discordHandler.Logout)
 	mux.HandleFunc("/api/auth/presence", discordHandler.PresencePing)
+	mux.HandleFunc("/api/profiles/theme", discordHandler.UpdateProfileTheme)
 	mux.HandleFunc("/api/profiles/", discordHandler.PublicProfile)
 	mux.HandleFunc("/api/rp/applications", discordHandler.SubmitRPApplication)
 	mux.HandleFunc("/api/rp/applications/", discordHandler.ModerateRPApplication)

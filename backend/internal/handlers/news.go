@@ -23,6 +23,7 @@ type NewsHandler struct {
 	telegramChannel  string
 	discordBotToken  string
 	discordChannelID string
+	discordGuildID   string
 	httpClient       *http.Client
 }
 
@@ -37,6 +38,8 @@ type discordNewsMessage struct {
 	} `json:"author"`
 	Attachments []struct {
 		URL         string `json:"url"`
+		ProxyURL    string `json:"proxy_url"`
+		Filename    string `json:"filename"`
 		ContentType string `json:"content_type"`
 		Size        int64  `json:"size"`
 	} `json:"attachments"`
@@ -62,12 +65,13 @@ var (
 	systemNewsChannelID = "1460666647273799842"
 )
 
-func NewNewsHandler(db *sql.DB, telegramChannel, discordBotToken, discordChannelID string) *NewsHandler {
+func NewNewsHandler(db *sql.DB, telegramChannel, discordBotToken, discordChannelID, discordGuildID string) *NewsHandler {
 	return &NewsHandler{
 		db:               db,
 		telegramChannel:  strings.TrimSpace(telegramChannel),
 		discordBotToken:  strings.TrimSpace(discordBotToken),
 		discordChannelID: strings.TrimSpace(discordChannelID),
+		discordGuildID:   strings.TrimSpace(discordGuildID),
 		httpClient: &http.Client{
 			Timeout: 6 * time.Second,
 		},
@@ -91,34 +95,41 @@ func (h *NewsHandler) List(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	category := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("category")))
 	authorID := strings.TrimSpace(r.URL.Query().Get("authorId"))
+	currentDiscordID := currentDiscordIDFromCookie(r)
+	var items []models.News
+	var err error
 
 	if h.discordBotToken != "" && (category == "user" || category == "users" || category == "system") {
-		if items, err := h.fetchCategorizedDiscordNews(ctx, category, limit, authorID); err == nil {
+		if items, err = h.fetchCategorizedDiscordNews(ctx, category, limit, authorID); err == nil {
+			_ = h.enrichNewsInteractions(ctx, items, currentDiscordID)
 			writeJSON(w, http.StatusOK, items)
 			return
 		}
 	}
 
 	if h.telegramChannel != "" {
-		if items, err := h.fetchTelegramNews(ctx, limit); err == nil && len(items) > 0 {
+		if items, err = h.fetchTelegramNews(ctx, limit); err == nil && len(items) > 0 {
+			_ = h.enrichNewsInteractions(ctx, items, currentDiscordID)
 			writeJSON(w, http.StatusOK, items)
 			return
 		}
 	}
 
 	if h.discordBotToken != "" && h.discordChannelID != "" {
-		if items, err := h.fetchDiscordNews(ctx, limit); err == nil && len(items) > 0 {
+		if items, err = h.fetchDiscordNews(ctx, limit); err == nil && len(items) > 0 {
+			_ = h.enrichNewsInteractions(ctx, items, currentDiscordID)
 			writeJSON(w, http.StatusOK, items)
 			return
 		}
 	}
 
-	items, err := h.listStoredNews(ctx, limit)
+	items, err = h.listStoredNews(ctx, limit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to fetch news")
 		return
 	}
 
+	_ = h.enrichNewsInteractions(ctx, items, currentDiscordID)
 	writeJSON(w, http.StatusOK, items)
 }
 
@@ -293,8 +304,8 @@ func (h *NewsHandler) fetchDiscordNewsFromChannels(ctx context.Context, channelI
 	if perChannelLimit < 10 {
 		perChannelLimit = 10
 	}
-	if perChannelLimit > 50 {
-		perChannelLimit = 50
+	if perChannelLimit > 100 {
+		perChannelLimit = 100
 	}
 	items := make([]models.News, 0, limit)
 	for _, channelID := range channelIDs {
@@ -324,7 +335,7 @@ func (h *NewsHandler) fetchDiscordNewsFromChannels(ctx context.Context, channelI
 			if authorID != "" && message.Author.ID != authorID {
 				continue
 			}
-			item, ok := discordNewsItem(message, channelID, source, category, imagesOnly)
+			item, ok := h.discordNewsItem(message, channelID, source, category, imagesOnly)
 			if ok {
 				item.Variant = newsVariant(len(items))
 				items = append(items, item)
@@ -335,7 +346,7 @@ func (h *NewsHandler) fetchDiscordNewsFromChannels(ctx context.Context, channelI
 	return limitNews(items, limit), nil
 }
 
-func discordNewsItem(message discordNewsMessage, channelID, source, category string, imagesOnly bool) (models.News, bool) {
+func (h *NewsHandler) discordNewsItem(message discordNewsMessage, channelID, source, category string, imagesOnly bool) (models.News, bool) {
 	imageURL := discordMessageImageURL(message)
 	if imagesOnly && imageURL == "" {
 		return models.News{}, false
@@ -363,7 +374,7 @@ func discordNewsItem(message discordNewsMessage, channelID, source, category str
 		Intro:     truncateRunes(text, 220),
 		Tags:      []string{source},
 		Source:    source,
-		URL:       "https://discord.com/channels/@me/" + channelID + "/" + message.ID,
+		URL:       h.discordMessageURL(channelID, message.ID),
 		ImageURL:  imageURL,
 		Category:  category,
 		Author:    author,
@@ -377,7 +388,10 @@ func discordMessageImageURL(message discordNewsMessage) string {
 		if attachment.Size > 10*1024*1024 {
 			continue
 		}
-		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(attachment.ContentType)), "image/") {
+		if isDiscordImageAttachment(attachment.ContentType, attachment.Filename, attachment.URL) {
+			if strings.TrimSpace(attachment.ProxyURL) != "" {
+				return strings.TrimSpace(attachment.ProxyURL)
+			}
 			return strings.TrimSpace(attachment.URL)
 		}
 	}
@@ -385,6 +399,47 @@ func discordMessageImageURL(message discordNewsMessage) string {
 		return strings.TrimSpace(message.Embeds[0].Image.URL)
 	}
 	return ""
+}
+
+func isDiscordImageAttachment(contentType, filename, rawURL string) bool {
+	contentType = strings.ToLower(strings.TrimSpace(contentType))
+	if strings.HasPrefix(contentType, "image/") {
+		return true
+	}
+	target := strings.ToLower(strings.TrimSpace(filename))
+	if target == "" {
+		if parsed, err := url.Parse(rawURL); err == nil {
+			target = strings.ToLower(parsed.Path)
+		}
+	}
+	return strings.HasSuffix(target, ".png") ||
+		strings.HasSuffix(target, ".jpg") ||
+		strings.HasSuffix(target, ".jpeg") ||
+		strings.HasSuffix(target, ".webp") ||
+		strings.HasSuffix(target, ".gif")
+}
+
+func (h *NewsHandler) discordMessageURL(channelID, messageID string) string {
+	guildID := strings.TrimSpace(h.discordGuildID)
+	if guildID == "" {
+		guildID = "@me"
+	}
+	return "https://discord.com/channels/" + url.PathEscape(guildID) + "/" + url.PathEscape(channelID) + "/" + url.PathEscape(messageID)
+}
+
+func (h *NewsHandler) enrichNewsInteractions(ctx context.Context, items []models.News, discordID string) error {
+	for index := range items {
+		newsID := strings.TrimSpace(items[index].ID)
+		if newsID == "" {
+			continue
+		}
+		_ = h.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM news_likes WHERE news_id = $1`, newsID).Scan(&items[index].LikeCount)
+		_ = h.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM news_comments WHERE news_id = $1`, newsID).Scan(&items[index].CommentCount)
+		if discordID != "" {
+			_ = h.db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM news_likes WHERE news_id = $1 AND discord_id = $2)`, newsID, discordID).Scan(&items[index].LikedByMe)
+		}
+	}
+	return nil
 }
 
 func normalizeTelegramChannel(raw string) string {

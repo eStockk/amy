@@ -27,8 +27,10 @@ type DiscordMemberSync struct {
 }
 
 type discordGuildRole struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Color    int    `json:"color"`
+	Position int    `json:"position"`
 }
 
 type discordGuildMember struct {
@@ -172,27 +174,31 @@ func (s *DiscordMemberSync) Sync(ctx context.Context) error {
 			}
 
 			roleNames := make([]string, 0, len(member.Roles))
+			roleIDs := make([]string, 0, len(member.Roles))
 			for _, roleID := range member.Roles {
 				if name := roles[roleID]; name != "" && name != "@everyone" {
 					roleNames = append(roleNames, name)
+					roleIDs = append(roleIDs, roleID)
 				}
 			}
 
 			if _, err := tx.ExecContext(
 				ctx,
-				`INSERT INTO discord_member_states (discord_id, username, global_name, nick, roles, discord_status, synced_at)
-				 VALUES ($1, $2, $3, $4, $5, 'offline', $6)
+				`INSERT INTO discord_member_states (discord_id, username, global_name, nick, roles, role_ids, discord_status, synced_at)
+				 VALUES ($1, $2, $3, $4, $5, $6, 'offline', $7)
 				 ON CONFLICT (discord_id) DO UPDATE SET
 				   username = EXCLUDED.username,
 				   global_name = EXCLUDED.global_name,
 				   nick = EXCLUDED.nick,
 				   roles = EXCLUDED.roles,
+				   role_ids = EXCLUDED.role_ids,
 				   synced_at = EXCLUDED.synced_at`,
 				discordID,
 				strings.TrimSpace(member.User.Username),
 				strings.TrimSpace(member.User.GlobalName),
 				strings.TrimSpace(member.Nick),
 				roleNames,
+				roleIDs,
 				now,
 			); err != nil {
 				_ = tx.Rollback()

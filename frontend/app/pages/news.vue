@@ -10,22 +10,23 @@
 
     <div v-if="pending" class="empty">
       <strong>Загружаем новости</strong>
-      <p>Проверяем Telegram или Discord-ленту сервера.</p>
+      <p>Проверяем Discord-ленту сервера.</p>
     </div>
 
     <div v-else-if="error" class="empty">
       <strong>Новости временно недоступны</strong>
-      <p>Попробуйте обновить страницу позже.</p>
+      <p>Проверьте доступ бота к каналам Discord и обновите страницу.</p>
     </div>
 
     <div v-else-if="isEmpty" class="empty">
       <strong>Пока новостей нет</strong>
-      <p>После подключения канала посты появятся здесь автоматически.</p>
+      <p>Когда бот получит доступ к каналам, посты появятся здесь автоматически.</p>
     </div>
 
     <div v-else class="grid">
       <NewsCard
         v-for="item in news"
+        :id="item.id"
         :key="item.id"
         :title="item.title"
         :intro="item.intro"
@@ -36,6 +37,9 @@
         :variant="item.variant"
         :image-url="item.imageUrl"
         :author="item.author"
+        :like-count="item.likeCount"
+        :comment-count="item.commentCount"
+        :liked-by-me="item.likedByMe"
       />
     </div>
   </div>
@@ -47,7 +51,7 @@ import NewsCard from '~/components/NewsCard.vue'
 import { useNews } from '~/composables/useNews'
 
 const category = ref('')
-const { news, pending, error, refresh } = useNews(9, category)
+const { news, pending, error, refresh } = useNews(12, category)
 const isEmpty = computed(() => !pending.value && news.value.length === 0)
 
 watch(category, () => refresh())
@@ -61,7 +65,7 @@ watch(category, () => refresh())
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 16px;
 }
 
@@ -89,7 +93,7 @@ watch(category, () => refresh())
   display: grid;
   gap: 8px;
   padding: 20px 24px;
-  border-radius: var(--radius-md);
+  border-radius: 8px;
   border: 1px dashed rgba(255, 255, 255, 0.2);
   background: rgba(255, 255, 255, 0.03);
   color: var(--muted);

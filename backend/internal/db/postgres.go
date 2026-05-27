@@ -50,6 +50,7 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
+		`ALTER TABLE discord_users ADD COLUMN IF NOT EXISTS profile_theme_role_id TEXT NOT NULL DEFAULT ''`,
 		`CREATE TABLE IF NOT EXISTS rp_applications (
 			id TEXT PRIMARY KEY,
 			discord_id TEXT NOT NULL REFERENCES discord_users(discord_id) ON DELETE CASCADE,
@@ -161,13 +162,31 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 			global_name TEXT NOT NULL DEFAULT '',
 			nick TEXT NOT NULL DEFAULT '',
 			roles TEXT[] NOT NULL DEFAULT '{}',
+			role_ids TEXT[] NOT NULL DEFAULT '{}',
 			discord_status TEXT NOT NULL DEFAULT 'unknown',
 			synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
 		`ALTER TABLE discord_member_states ADD COLUMN IF NOT EXISTS username TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE discord_member_states ADD COLUMN IF NOT EXISTS global_name TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE discord_member_states ADD COLUMN IF NOT EXISTS nick TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE discord_member_states ADD COLUMN IF NOT EXISTS role_ids TEXT[] NOT NULL DEFAULT '{}'`,
 		`CREATE INDEX IF NOT EXISTS discord_member_states_synced_at_idx ON discord_member_states(synced_at DESC)`,
+		`CREATE TABLE IF NOT EXISTS news_likes (
+			news_id TEXT NOT NULL,
+			discord_id TEXT NOT NULL REFERENCES discord_users(discord_id) ON DELETE CASCADE,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			PRIMARY KEY (news_id, discord_id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS news_likes_news_id_idx ON news_likes(news_id)`,
+		`CREATE TABLE IF NOT EXISTS news_comments (
+			id BIGSERIAL PRIMARY KEY,
+			news_id TEXT NOT NULL,
+			discord_id TEXT NOT NULL REFERENCES discord_users(discord_id) ON DELETE CASCADE,
+			author_name TEXT NOT NULL DEFAULT '',
+			message TEXT NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS news_comments_news_id_created_at_idx ON news_comments(news_id, created_at ASC)`,
 	}
 
 	for _, statement := range statements {
