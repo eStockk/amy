@@ -30,21 +30,36 @@ type discordNewsMessage struct {
 	ID        string `json:"id"`
 	Content   string `json:"content"`
 	Timestamp string `json:"timestamp"`
-	Embeds    []struct {
+	Author    struct {
+		ID         string `json:"id"`
+		Username   string `json:"username"`
+		GlobalName string `json:"global_name"`
+	} `json:"author"`
+	Attachments []struct {
+		URL         string `json:"url"`
+		ContentType string `json:"content_type"`
+		Size        int64  `json:"size"`
+	} `json:"attachments"`
+	Embeds []struct {
 		Title       string `json:"title"`
 		Description string `json:"description"`
+		Image       struct {
+			URL string `json:"url"`
+		} `json:"image"`
 	} `json:"embeds"`
 }
 
 var (
-	telegramTextRe  = regexp.MustCompile(`(?s)<div class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>`)
-	telegramTimeRe  = regexp.MustCompile(`<time datetime="([^"]+)"`)
-	htmlBreakRe     = regexp.MustCompile(`(?i)<br\s*/?>`)
-	htmlTagRe       = regexp.MustCompile(`(?s)<[^>]+>`)
-	spaceRe         = regexp.MustCompile(`[ \t\r\f\v]+`)
-	multiNewlineRe  = regexp.MustCompile(`\n{3,}`)
-	newsHashTagRe   = regexp.MustCompile(`#([\p{L}\p{N}_-]+)`)
-	newsVariantList = []string{"pink", "blue", "green"}
+	telegramTextRe      = regexp.MustCompile(`(?s)<div class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>`)
+	telegramTimeRe      = regexp.MustCompile(`<time datetime="([^"]+)"`)
+	htmlBreakRe         = regexp.MustCompile(`(?i)<br\s*/?>`)
+	htmlTagRe           = regexp.MustCompile(`(?s)<[^>]+>`)
+	spaceRe             = regexp.MustCompile(`[ \t\r\f\v]+`)
+	multiNewlineRe      = regexp.MustCompile(`\n{3,}`)
+	newsHashTagRe       = regexp.MustCompile(`#([\p{L}\p{N}_-]+)`)
+	newsVariantList     = []string{"pink", "blue", "green"}
+	userNewsChannelIDs  = []string{"1205246003482075227", "1237481284494950481"}
+	systemNewsChannelID = "1460666647273799842"
 )
 
 func NewNewsHandler(db *sql.DB, telegramChannel, discordBotToken, discordChannelID string) *NewsHandler {
@@ -74,6 +89,15 @@ func (h *NewsHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
+	category := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("category")))
+	authorID := strings.TrimSpace(r.URL.Query().Get("authorId"))
+
+	if h.discordBotToken != "" && (category == "user" || category == "users" || category == "system") {
+		if items, err := h.fetchCategorizedDiscordNews(ctx, category, limit, authorID); err == nil {
+			writeJSON(w, http.StatusOK, items)
+			return
+		}
+	}
 
 	if h.telegramChannel != "" {
 		if items, err := h.fetchTelegramNews(ctx, limit); err == nil && len(items) > 0 {
@@ -96,6 +120,13 @@ func (h *NewsHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, items)
+}
+
+func (h *NewsHandler) fetchCategorizedDiscordNews(ctx context.Context, category string, limit int64, authorID string) ([]models.News, error) {
+	if category == "system" {
+		return h.fetchDiscordNewsFromChannels(ctx, []string{systemNewsChannelID}, "Системные", "system", limit, false, "")
+	}
+	return h.fetchDiscordNewsFromChannels(ctx, userNewsChannelIDs, "Пользовательские", "user", limit, true, authorID)
 }
 
 func (h *NewsHandler) listStoredNews(ctx context.Context, limit int64) ([]models.News, error) {
@@ -255,6 +286,105 @@ func (h *NewsHandler) fetchDiscordNews(ctx context.Context, limit int64) ([]mode
 
 	sortNews(items)
 	return limitNews(items, limit), nil
+}
+
+func (h *NewsHandler) fetchDiscordNewsFromChannels(ctx context.Context, channelIDs []string, source, category string, limit int64, imagesOnly bool, authorID string) ([]models.News, error) {
+	perChannelLimit := limit
+	if perChannelLimit < 10 {
+		perChannelLimit = 10
+	}
+	if perChannelLimit > 50 {
+		perChannelLimit = 50
+	}
+	items := make([]models.News, 0, limit)
+	for _, channelID := range channelIDs {
+		requestURL := "https://discord.com/api/v10/channels/" + url.PathEscape(channelID) + "/messages?limit=" + strconv.FormatInt(perChannelLimit, 10)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Authorization", "Bot "+h.discordBotToken)
+		req.Header.Set("User-Agent", "amy-world-news/1.0")
+
+		resp, err := h.httpClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode < 200 || resp.StatusCode > 299 {
+			_ = resp.Body.Close()
+			return nil, errUnexpectedStatus(resp.StatusCode)
+		}
+		var messages []discordNewsMessage
+		err = json.NewDecoder(io.LimitReader(resp.Body, 1024*1024)).Decode(&messages)
+		_ = resp.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+		for _, message := range messages {
+			if authorID != "" && message.Author.ID != authorID {
+				continue
+			}
+			item, ok := discordNewsItem(message, channelID, source, category, imagesOnly)
+			if ok {
+				item.Variant = newsVariant(len(items))
+				items = append(items, item)
+			}
+		}
+	}
+	sortNews(items)
+	return limitNews(items, limit), nil
+}
+
+func discordNewsItem(message discordNewsMessage, channelID, source, category string, imagesOnly bool) (models.News, bool) {
+	imageURL := discordMessageImageURL(message)
+	if imagesOnly && imageURL == "" {
+		return models.News{}, false
+	}
+	title, text := discordMessageText(message)
+	if title == "" {
+		title, text = titleAndIntro(text)
+	}
+	if title == "" && imageURL != "" {
+		title = "Пост игрока"
+	}
+	if text == "" {
+		text = title
+	}
+	if strings.TrimSpace(title) == "" && strings.TrimSpace(text) == "" {
+		return models.News{}, false
+	}
+	author := strings.TrimSpace(message.Author.GlobalName)
+	if author == "" {
+		author = strings.TrimSpace(message.Author.Username)
+	}
+	return models.News{
+		ID:        "discord:" + category + ":" + message.ID,
+		Title:     truncateRunes(title, 96),
+		Intro:     truncateRunes(text, 220),
+		Tags:      []string{source},
+		Source:    source,
+		URL:       "https://discord.com/channels/@me/" + channelID + "/" + message.ID,
+		ImageURL:  imageURL,
+		Category:  category,
+		Author:    author,
+		AuthorID:  strings.TrimSpace(message.Author.ID),
+		CreatedAt: parseNewsTime(message.Timestamp),
+	}, true
+}
+
+func discordMessageImageURL(message discordNewsMessage) string {
+	for _, attachment := range message.Attachments {
+		if attachment.Size > 10*1024*1024 {
+			continue
+		}
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(attachment.ContentType)), "image/") {
+			return strings.TrimSpace(attachment.URL)
+		}
+	}
+	if len(message.Embeds) > 0 {
+		return strings.TrimSpace(message.Embeds[0].Image.URL)
+	}
+	return ""
 }
 
 func normalizeTelegramChannel(raw string) string {

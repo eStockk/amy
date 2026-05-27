@@ -2,6 +2,12 @@
   <div class="page">
     <SectionTitle text="Новости" />
 
+    <div class="tabs">
+      <button type="button" :class="{ active: category === '' }" @click="category = ''">Все</button>
+      <button type="button" :class="{ active: category === 'user' }" @click="category = 'user'">Пользовательские</button>
+      <button type="button" :class="{ active: category === 'system' }" @click="category = 'system'">Системные</button>
+    </div>
+
     <div v-if="pending" class="empty">
       <strong>Загружаем новости</strong>
       <p>Проверяем Telegram или Discord-ленту сервера.</p>
@@ -28,6 +34,8 @@
         :url="item.url"
         :created-at="item.createdAt"
         :variant="item.variant"
+        :image-url="item.imageUrl"
+        :author="item.author"
       />
     </div>
   </div>
@@ -38,8 +46,11 @@ import SectionTitle from '~/components/SectionTitle.vue'
 import NewsCard from '~/components/NewsCard.vue'
 import { useNews } from '~/composables/useNews'
 
-const { news, pending, error } = useNews(9)
+const category = ref('')
+const { news, pending, error, refresh } = useNews(9, category)
 const isEmpty = computed(() => !pending.value && news.value.length === 0)
+
+watch(category, () => refresh())
 </script>
 
 <style scoped>
@@ -52,6 +63,26 @@ const isEmpty = computed(() => !pending.value && news.value.length === 0)
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 16px;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tabs button {
+  border: 1px solid var(--stroke);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  padding: 8px 13px;
+  cursor: pointer;
+}
+
+.tabs button.active {
+  border-color: rgba(240, 90, 60, 0.5);
+  background: rgba(240, 90, 60, 0.16);
 }
 
 .empty {

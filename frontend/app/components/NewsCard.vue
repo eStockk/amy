@@ -8,13 +8,15 @@
     </div>
     <div v-if="source || formattedDate" class="meta">
       <span v-if="source">{{ source }}</span>
+      <span v-if="author">{{ author }}</span>
       <span v-if="formattedDate">{{ formattedDate }}</span>
     </div>
     <h4>{{ title }}</h4>
     <p>{{ intro }}</p>
     <a v-if="url" class="primary" :href="url" target="_blank" rel="noreferrer">Открыть пост</a>
     <button v-else class="primary" type="button">Подробнее</button>
-    <div class="media" :class="variant"></div>
+    <img v-if="imageUrl" class="media image" :src="imageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
+    <div v-else class="media" :class="variant"></div>
   </article>
 </template>
 
@@ -25,6 +27,8 @@ const props = defineProps<{
   tags: string[]
   source?: string
   url?: string
+  imageUrl?: string
+  author?: string
   createdAt?: string
   variant?: 'pink' | 'blue' | 'green'
 }>()
@@ -130,6 +134,12 @@ p {
   height: 140px;
   border-radius: 9px;
   background: linear-gradient(135deg, #725c74, #d59abf);
+}
+
+.media.image {
+  width: 100%;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .media.blue {

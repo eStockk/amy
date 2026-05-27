@@ -9,6 +9,10 @@ type News struct {
 	Tags      []string  `json:"tags"`
 	Source    string    `json:"source,omitempty"`
 	URL       string    `json:"url,omitempty"`
+	ImageURL  string    `json:"imageUrl,omitempty"`
+	Category  string    `json:"category,omitempty"`
+	Author    string    `json:"author,omitempty"`
+	AuthorID  string    `json:"authorId,omitempty"`
 	Variant   string    `json:"variant,omitempty"`
 	CreatedAt time.Time `json:"createdAt"`
 }

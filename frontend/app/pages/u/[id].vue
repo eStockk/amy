@@ -22,17 +22,22 @@
           <p class="eyebrow">Профиль игрока</p>
           <h1>{{ profile.displayName }}</h1>
           <p class="muted">@{{ profile.username }}</p>
-          <p v-if="isOwner && user?.email" class="muted email">{{ user.email }}</p>
 
           <div class="chips">
             <span class="chip" v-if="fullRPName !== 'Не указан'">RP: {{ fullRPName }}</span>
             <span class="chip" v-if="profile.joinedAt">На сайте с {{ formatDate(profile.joinedAt, true) }}</span>
             <span class="chip" v-else>Дата регистрации обновится после входа</span>
-            <span class="chip">{{ onlineStatusLabel }}</span>
           </div>
 
-          <div class="actions" v-if="isOwner">
-            <button class="ghost danger" type="button" @click="logoutAndBack">Выйти</button>
+          <div class="actions">
+            <NuxtLink v-if="profile.hasAcceptedApplication" class="ghost chat-link" to="/chat" aria-label="Открыть общий чат">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 6.5A3.5 3.5 0 0 1 8.5 3h7A3.5 3.5 0 0 1 19 6.5v5A3.5 3.5 0 0 1 15.5 15H13l-4.5 4v-4A3.5 3.5 0 0 1 5 11.5v-5Z" />
+                <path d="M9 8h6M9 11h4" />
+              </svg>
+              Чат игроков
+            </NuxtLink>
+            <button v-if="isOwner" class="ghost danger" type="button" @click="logoutAndBack">Выйти</button>
           </div>
         </article>
 
@@ -62,7 +67,30 @@
           <article class="info-card highlight">
             <p class="label">RP имя и фамилия</p>
             <strong>{{ fullRPName }}</strong>
-            <p class="muted">Эти поля обновляются по данным RP-заявки и профиля Discord.</p>
+            <p class="muted">Данные берутся из принятой RP-заявки.</p>
+          </article>
+          <article class="info-card">
+            <p class="label">Игровой ник</p>
+            <strong>{{ profile.minecraftNickname || 'Не указан' }}</strong>
+          </article>
+          <article class="info-card">
+            <p class="label">Раса</p>
+            <strong>{{ profile.race || 'Не указана' }}</strong>
+          </article>
+          <article class="info-card">
+            <p class="label">Пол</p>
+            <strong>{{ profile.gender || 'Не указан' }}</strong>
+          </article>
+          <article class="info-card">
+            <p class="label">Дата рождения</p>
+            <strong>{{ profile.birthDate ? formatDate(profile.birthDate, true) : 'Не указана' }}</strong>
+          </article>
+          <article class="info-card roles-card">
+            <p class="label">Роли Discord</p>
+            <div v-if="profile.discordRoles?.length" class="role-list">
+              <span v-for="role in profile.discordRoles" :key="role">{{ role }}</span>
+            </div>
+            <strong v-else>Нет публичных ролей</strong>
           </article>
         </section>
 
@@ -83,6 +111,32 @@
           </div>
 
           <p v-if="submitMessage" class="status" :class="{ error: submitError }">{{ submitMessage }}</p>
+        </section>
+
+        <section v-if="profile.hasAcceptedApplication" class="panel posts-card">
+          <div class="section-head">
+            <h3>Посты игрока</h3>
+            <span class="badge">{{ playerPosts.length }}</span>
+          </div>
+
+          <p v-if="postsPending" class="muted">Загружаем изображения из Discord...</p>
+          <p v-else-if="!playerPosts.length" class="muted">Пока нет изображений из пользовательских каналов.</p>
+          <div v-else class="posts-grid">
+            <NewsCard
+              v-for="post in playerPosts"
+              :id="post.id"
+              :key="post.id"
+              :title="post.title"
+              :intro="post.intro"
+              :tags="post.tags"
+              :source="post.source"
+              :url="post.url"
+              :created-at="post.createdAt"
+              :variant="post.variant"
+              :image-url="post.imageUrl"
+              :author="post.author"
+            />
+          </div>
         </section>
       </div>
     </section>
@@ -180,8 +234,10 @@
 
 <script setup lang="ts">
 import logo from '~/assets/amy-logo.png'
+import NewsCard from '~/components/NewsCard.vue'
 import type { AuthUser } from '~/composables/useAuth'
 import { useAuth } from '~/composables/useAuth'
+import type { NewsItem } from '~/composables/useNews'
 
 type PublicProfile = {
   id: string
@@ -190,6 +246,13 @@ type PublicProfile = {
   avatarUrl?: string
   rpFirstName?: string
   rpLastName?: string
+  rpName?: string
+  minecraftNickname?: string
+  race?: string
+  gender?: string
+  birthDate?: string
+  discordRoles?: string[]
+  hasAcceptedApplication?: boolean
   joinedAt?: string
   isOnline?: boolean
 }
@@ -215,6 +278,8 @@ const pending = ref(true)
 const errorMessage = ref('')
 
 const profile = ref<PublicProfile | null>(null)
+const playerPosts = ref<NewsItem[]>([])
+const postsPending = ref(false)
 const profileId = computed(() => String(route.params.id || '').trim())
 const isOwner = computed(() => Boolean(authenticated.value && user.value?.id === profile.value?.id))
 
@@ -247,15 +312,10 @@ const form = reactive({
 
 const fullRPName = computed(() => {
   if (!profile.value) return '\u041d\u0435 \u0443\u043a\u0430\u0437\u0430\u043d'
+  if (profile.value.rpName?.trim()) return profile.value.rpName.trim()
   const full = `${profile.value.rpFirstName || ''} ${profile.value.rpLastName || ''}`.trim()
   return full || '\u041d\u0435 \u0443\u043a\u0430\u0437\u0430\u043d'
 })
-
-const onlineStatusLabel = computed(() =>
-  profile.value?.isOnline
-    ? '\u0421\u0435\u0439\u0447\u0430\u0441 \u043d\u0430 \u0441\u0430\u0439\u0442\u0435'
-    : '\u0421\u0435\u0439\u0447\u0430\u0441 \u043d\u0435 \u043d\u0430 \u0441\u0430\u0439\u0442\u0435'
-)
 
 const statusLabelPublic = '\u041f\u0443\u0431\u043b\u0438\u0447\u043d\u044b\u0439 \u0432\u0438\u0434 \u043f\u0440\u043e\u0444\u0438\u043b\u044f'
 const statusLabelAccepted = '\u041f\u0440\u0438\u043d\u044f\u0442\u0430'
@@ -393,11 +453,17 @@ const loadProfile = async () => {
         ...response.profile,
         rpFirstName: user.value.rpFirstName || response.profile.rpFirstName,
         rpLastName: user.value.rpLastName || response.profile.rpLastName,
+        rpName: response.profile.rpName || user.value.rpApplication?.rpName,
+        minecraftNickname: response.profile.minecraftNickname || user.value.rpApplication?.nickname,
+        race: response.profile.race || user.value.rpApplication?.race,
+        gender: response.profile.gender || user.value.rpApplication?.gender,
+        birthDate: response.profile.birthDate || user.value.rpApplication?.birthDate,
         joinedAt: response.profile.joinedAt
       }
       fillFromCurrentState(user.value)
     }
 
+    await loadPlayerPosts()
     await maybeOpenApplicationFromQuery()
   } catch (error: unknown) {
     const message = (error as { data?: { error?: string } })?.data?.error
@@ -405,6 +471,29 @@ const loadProfile = async () => {
     profile.value = null
   } finally {
     pending.value = false
+  }
+}
+
+const loadPlayerPosts = async () => {
+  if (!profile.value?.hasAcceptedApplication || !profile.value.id) {
+    playerPosts.value = []
+    return
+  }
+
+  postsPending.value = true
+  try {
+    playerPosts.value = await $fetch<NewsItem[]>(`${config.public.apiBase}/news`, {
+      credentials: 'include',
+      query: {
+        category: 'user',
+        authorId: profile.value.id,
+        limit: 6
+      }
+    })
+  } catch {
+    playerPosts.value = []
+  } finally {
+    postsPending.value = false
   }
 }
 
@@ -681,10 +770,6 @@ h1 {
   color: var(--muted);
 }
 
-.email {
-  font-size: 13px;
-}
-
 .chips {
   display: flex;
   flex-wrap: wrap;
@@ -702,6 +787,20 @@ h1 {
 .actions {
   display: grid;
   gap: 8px;
+}
+
+.chat-link {
+  gap: 8px;
+}
+
+.chat-link svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .summary-card {
@@ -738,13 +837,40 @@ h1 {
 }
 
 .info-card strong {
-  font-size: 24px;
+  font-size: clamp(18px, 2vw, 24px);
   font-family: 'Neue Machine', 'Montserrat', sans-serif;
+  overflow-wrap: anywhere;
 }
 
-.application-card {
+.roles-card {
+  align-content: start;
+}
+
+.role-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.role-list span {
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.07);
+  padding: 6px 9px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.application-card,
+.posts-card {
   display: grid;
   gap: 12px;
+}
+
+.posts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .section-head {
@@ -918,6 +1044,7 @@ textarea {
   }
 
   .info-grid,
+  .posts-grid,
   .form-grid,
   .row {
     grid-template-columns: 1fr;

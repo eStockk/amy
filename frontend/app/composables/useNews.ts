@@ -5,17 +5,24 @@ export type NewsItem = {
   tags: string[]
   source?: string
   url?: string
+  imageUrl?: string
+  category?: string
+  author?: string
+  authorId?: string
   createdAt?: string
   variant?: 'pink' | 'blue' | 'green'
 }
 
-export function useNews(limit = 3) {
+export function useNews(limit = 3, category: string | Ref<string> = '') {
   const config = useRuntimeConfig()
 
   const { data, pending, error, refresh } = useFetch<NewsItem[]>(
-    () => `${config.public.apiBase}/news?limit=${limit}`,
+    () => {
+      const currentCategory = unref(category)
+      return `${config.public.apiBase}/news?limit=${limit}${currentCategory ? `&category=${encodeURIComponent(currentCategory)}` : ''}`
+    },
     {
-      key: `news-${limit}`,
+      key: `news-${limit}-${unref(category) || 'all'}`,
       server: false,
       default: () => [],
       lazy: true

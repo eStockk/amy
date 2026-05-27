@@ -82,14 +82,21 @@ type publicProfileResponse struct {
 }
 
 type publicProfile struct {
-	ID          string     `json:"id"`
-	Username    string     `json:"username"`
-	DisplayName string     `json:"displayName"`
-	AvatarURL   string     `json:"avatarUrl"`
-	RPFirstName string     `json:"rpFirstName,omitempty"`
-	RPLastName  string     `json:"rpLastName,omitempty"`
-	JoinedAt    *time.Time `json:"joinedAt,omitempty"`
-	IsOnline    bool       `json:"isOnline"`
+	ID                     string     `json:"id"`
+	Username               string     `json:"username"`
+	DisplayName            string     `json:"displayName"`
+	AvatarURL              string     `json:"avatarUrl"`
+	RPFirstName            string     `json:"rpFirstName,omitempty"`
+	RPLastName             string     `json:"rpLastName,omitempty"`
+	RPName                 string     `json:"rpName,omitempty"`
+	MinecraftNickname      string     `json:"minecraftNickname,omitempty"`
+	Race                   string     `json:"race,omitempty"`
+	Gender                 string     `json:"gender,omitempty"`
+	BirthDate              string     `json:"birthDate,omitempty"`
+	DiscordRoles           []string   `json:"discordRoles,omitempty"`
+	HasAcceptedApplication bool       `json:"hasAcceptedApplication"`
+	JoinedAt               *time.Time `json:"joinedAt,omitempty"`
+	IsOnline               bool       `json:"isOnline"`
 }
 
 type rpApplicationSummaryOut struct {
@@ -357,11 +364,13 @@ func (h *DiscordAuthHandler) PublicProfile(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	writeJSON(w, http.StatusOK, publicProfileResponse{Profile: toPublicProfile(*user, time.Now().UTC())})
+	profile := toPublicProfile(*user, time.Now().UTC())
+	_ = h.enrichPublicProfile(ctx, profile)
+	writeJSON(w, http.StatusOK, publicProfileResponse{Profile: profile})
 }
 
 func (h *DiscordAuthHandler) publicProfileFromRPApplication(ctx context.Context, discordID string) (*publicProfile, error) {
-	latest, err := h.loadLatestApplicationForDiscord(ctx, discordID)
+	latest, err := h.loadAcceptedApplicationForDiscord(ctx, discordID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -390,15 +399,7 @@ func (h *DiscordAuthHandler) publicProfileFromRPApplication(ctx context.Context,
 		IsOnline:    false,
 	}
 
-	if strings.TrimSpace(latest.RPName) != "" {
-		parts := strings.Fields(latest.RPName)
-		if len(parts) > 0 {
-			profile.RPFirstName = parts[0]
-		}
-		if len(parts) > 1 {
-			profile.RPLastName = strings.Join(parts[1:], " ")
-		}
-	}
+	applyRPApplicationToProfile(profile, latest)
 
 	return profile, nil
 }
@@ -587,6 +588,73 @@ func toPublicProfile(user discordUserDoc, now time.Time) *publicProfile {
 	}
 
 	return profile
+}
+
+func (h *DiscordAuthHandler) enrichPublicProfile(ctx context.Context, profile *publicProfile) error {
+	if profile == nil || strings.TrimSpace(profile.ID) == "" {
+		return nil
+	}
+
+	if app, err := h.loadAcceptedApplicationForDiscord(ctx, profile.ID); err == nil {
+		applyRPApplicationToProfile(profile, app)
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+
+	var roles []string
+	err := h.db.QueryRowContext(ctx, `SELECT roles FROM discord_member_states WHERE discord_id = $1`, profile.ID).Scan(&roles)
+	if err == nil {
+		profile.DiscordRoles = filterPublicDiscordRoles(roles)
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	return nil
+}
+
+func (h *DiscordAuthHandler) loadAcceptedApplicationForDiscord(ctx context.Context, discordID string) (*rpApplicationDoc, error) {
+	return scanRPApplication(h.db.QueryRowContext(ctx, rpApplicationSelectSQL+` WHERE discord_id = $1 AND status IN ('accepted', 'approved') ORDER BY updated_at DESC, created_at DESC LIMIT 1`, discordID))
+}
+
+func applyRPApplicationToProfile(profile *publicProfile, app *rpApplicationDoc) {
+	if profile == nil || app == nil {
+		return
+	}
+	profile.HasAcceptedApplication = app.Status == "accepted" || app.Status == "approved"
+	profile.RPName = strings.TrimSpace(app.RPName)
+	profile.MinecraftNickname = strings.TrimSpace(app.Nickname)
+	profile.Race = strings.TrimSpace(app.Race)
+	profile.Gender = strings.TrimSpace(app.Gender)
+	profile.BirthDate = strings.TrimSpace(app.BirthDate)
+	if profile.RPName != "" {
+		parts := strings.Fields(profile.RPName)
+		if len(parts) > 0 {
+			profile.RPFirstName = parts[0]
+		}
+		if len(parts) > 1 {
+			profile.RPLastName = strings.Join(parts[1:], " ")
+		}
+	}
+}
+
+func filterPublicDiscordRoles(roles []string) []string {
+	result := make([]string, 0, len(roles))
+	seen := map[string]struct{}{}
+	for _, role := range roles {
+		role = strings.TrimSpace(role)
+		if role == "" || strings.EqualFold(role, "@everyone") {
+			continue
+		}
+		key := strings.ToLower(role)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, role)
+		if len(result) == 12 {
+			break
+		}
+	}
+	return result
 }
 
 func parseDiscordIDSet(raw string) map[string]struct{} {
