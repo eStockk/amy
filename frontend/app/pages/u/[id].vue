@@ -124,6 +124,8 @@
               :variant="post.variant"
               :image-url="post.imageUrl"
               :author="post.author"
+              :author-id="post.authorId"
+              :author-avatar="post.authorAvatar"
               :like-count="post.likeCount"
               :comment-count="post.commentCount"
               :liked-by-me="post.likedByMe"

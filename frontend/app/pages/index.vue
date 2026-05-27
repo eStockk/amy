@@ -34,11 +34,19 @@
           :key="item.id"
           :title="item.title"
           :intro="item.intro"
+          :id="item.id"
           :tags="item.tags"
           :source="item.source"
           :url="item.url"
           :created-at="item.createdAt"
           :variant="item.variant"
+          :image-url="item.imageUrl"
+          :author="item.author"
+          :author-id="item.authorId"
+          :author-avatar="item.authorAvatar"
+          :like-count="item.likeCount"
+          :comment-count="item.commentCount"
+          :liked-by-me="item.likedByMe"
         />
       </div>
     </section>

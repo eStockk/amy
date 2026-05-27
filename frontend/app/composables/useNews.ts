@@ -9,6 +9,7 @@ export type NewsItem = {
   category?: string
   author?: string
   authorId?: string
+  authorAvatar?: string
   likeCount?: number
   commentCount?: number
   likedByMe?: boolean

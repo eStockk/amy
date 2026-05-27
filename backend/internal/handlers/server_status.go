@@ -52,7 +52,7 @@ type minecraftStatusPayload struct {
 func NewServerStatusHandler(address string) *ServerStatusHandler {
 	address = strings.TrimSpace(address)
 	if address == "" {
-		address = "play.amy-world.ru"
+		address = "amyworld.ru"
 	}
 	return &ServerStatusHandler{address: address}
 }
@@ -174,7 +174,7 @@ func splitMinecraftAddress(raw string) (string, string, error) {
 func displayMinecraftAddress(raw string) string {
 	host, port, err := splitMinecraftAddress(raw)
 	if err != nil {
-		return "play.amy-world.ru"
+		return "amyworld.ru"
 	}
 	if port == "25565" {
 		return host

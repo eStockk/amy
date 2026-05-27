@@ -15,15 +15,14 @@
     </div>
     <h4>{{ title }}</h4>
     <p>{{ intro }}</p>
-    <a v-if="url" class="primary" :href="url" target="_blank" rel="noreferrer">Открыть пост</a>
-    <button v-else class="primary" type="button">Подробнее</button>
+    <button class="primary" type="button" @click="openModal">Подробнее</button>
     <img v-if="imageUrl" class="media image" :src="imageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
     <div v-else class="media" :class="variant"></div>
     <div class="comments">
       <button class="comment-toggle" type="button" @click="toggleComments">
         Комментарии {{ commentsLoaded ? comments.length : localCommentCount }}
       </button>
-      <div v-if="commentsOpen" class="comment-panel">
+      <div v-if="commentsOpen" class="comment-panel compact">
         <p v-if="commentsPending" class="comment-muted">Загружаем...</p>
         <p v-else-if="!comments.length" class="comment-muted">Комментариев пока нет.</p>
         <article v-for="comment in comments" :key="comment.id" class="comment">
@@ -37,10 +36,60 @@
         <p v-if="commentError" class="comment-error">{{ commentError }}</p>
       </div>
     </div>
+    <Teleport to="body">
+      <div v-if="modalOpen" class="modal-backdrop" @click.self="closeModal">
+        <article class="post-modal" role="dialog" aria-modal="true" aria-label="Новость">
+          <button class="modal-close" type="button" @click="closeModal">×</button>
+          <section class="modal-main">
+            <img v-if="imageUrl" class="modal-image" :src="imageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
+            <div v-else class="modal-placeholder" :class="variant"></div>
+            <div class="modal-copy">
+              <div class="tags">
+                <span v-for="tag in tags" :key="tag"># {{ tag }}</span>
+              </div>
+              <h3>{{ title }}</h3>
+              <p>{{ intro }}</p>
+              <a v-if="url" class="discord-link" :href="url" target="_blank" rel="noreferrer">Открыть в Discord</a>
+            </div>
+          </section>
+          <aside class="modal-side">
+            <NuxtLink v-if="authorId" class="author-card" :to="`/u/${authorId}`">
+              <img :src="authorAvatar || fallbackAvatar" alt="" />
+              <span>{{ author || 'Автор' }}</span>
+            </NuxtLink>
+            <div v-else class="author-card inert">
+              <img :src="authorAvatar || fallbackAvatar" alt="" />
+              <span>{{ author || 'Автор' }}</span>
+            </div>
+            <div class="modal-stats">
+              <button class="like" type="button" :class="{ active: localLiked }" @click="toggleLike">
+                {{ localLiked ? '♥' : '♡' }} <span>{{ localLikeCount }}</span>
+              </button>
+              <span>💬 {{ commentsLoaded ? comments.length : localCommentCount }}</span>
+            </div>
+            <div class="modal-comments">
+              <p v-if="commentsPending" class="comment-muted">Загружаем...</p>
+              <p v-else-if="!comments.length" class="comment-muted">Комментариев пока нет.</p>
+              <article v-for="comment in comments" :key="comment.id" class="comment">
+                <strong>{{ comment.author }}</strong>
+                <span>{{ comment.message }}</span>
+              </article>
+            </div>
+            <form class="comment-form" @submit.prevent="sendComment">
+              <input v-model.trim="commentText" maxlength="800" placeholder="Комментарий..." />
+              <button type="submit" :disabled="commentPending || !commentText">Отправить</button>
+            </form>
+            <p v-if="commentError" class="comment-error">{{ commentError }}</p>
+          </aside>
+        </article>
+      </div>
+    </Teleport>
   </article>
 </template>
 
 <script setup lang="ts">
+import fallbackAvatar from '~/assets/amy-logo.png'
+
 const props = defineProps<{
   id?: string
   title: string
@@ -50,6 +99,8 @@ const props = defineProps<{
   url?: string
   imageUrl?: string
   author?: string
+  authorId?: string
+  authorAvatar?: string
   likeCount?: number
   commentCount?: number
   likedByMe?: boolean
@@ -69,6 +120,7 @@ const localLiked = ref(Boolean(props.likedByMe))
 const localLikeCount = ref(props.likeCount || 0)
 const localCommentCount = ref(props.commentCount || 0)
 const commentsOpen = ref(false)
+const modalOpen = ref(false)
 const commentsLoaded = ref(false)
 const commentsPending = ref(false)
 const commentPending = ref(false)
@@ -133,8 +185,17 @@ const loadComments = async () => {
 }
 
 const toggleComments = async () => {
-  commentsOpen.value = !commentsOpen.value
-  if (commentsOpen.value) await loadComments()
+  await openModal()
+  commentsOpen.value = false
+}
+
+const openModal = async () => {
+  modalOpen.value = true
+  await loadComments()
+}
+
+const closeModal = () => {
+  modalOpen.value = false
 }
 
 const sendComment = async () => {
@@ -284,6 +345,10 @@ p {
   padding-top: 10px;
 }
 
+.comment-panel.compact {
+  display: none;
+}
+
 .comment {
   display: grid;
   gap: 3px;
@@ -321,6 +386,141 @@ p {
 
 .comment-error {
   color: #ff9f9f;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(7, 6, 10, 0.78);
+  backdrop-filter: blur(8px);
+}
+
+.post-modal {
+  position: relative;
+  width: min(1080px, 100%);
+  max-height: min(760px, calc(100dvh - 36px));
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.8fr);
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  background: #15151b;
+  overflow: hidden;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+}
+
+.modal-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.36);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 22px;
+}
+
+.modal-main {
+  display: grid;
+  grid-template-rows: minmax(260px, 1fr) auto;
+  min-height: 0;
+}
+
+.modal-image,
+.modal-placeholder {
+  width: 100%;
+  height: 100%;
+  max-height: 520px;
+  object-fit: contain;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.modal-placeholder {
+  min-height: 340px;
+  background: linear-gradient(135deg, #725c74, #d59abf);
+}
+
+.modal-copy,
+.modal-side {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.modal-copy h3 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.discord-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.modal-side {
+  border-left: 1px solid var(--stroke);
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  min-height: 0;
+}
+
+.author-card {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.author-card.inert {
+  pointer-events: none;
+}
+
+.author-card img {
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.modal-stats {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+}
+
+.modal-comments {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  overflow: auto;
+  min-height: 160px;
+  padding-right: 4px;
+}
+
+@media (max-width: 820px) {
+  .post-modal {
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+
+  .modal-side {
+    border-left: 0;
+    border-top: 1px solid var(--stroke);
+  }
 }
 
 .media.blue {

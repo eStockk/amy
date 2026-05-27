@@ -35,6 +35,7 @@ type discordNewsMessage struct {
 		ID         string `json:"id"`
 		Username   string `json:"username"`
 		GlobalName string `json:"global_name"`
+		Avatar     string `json:"avatar"`
 	} `json:"author"`
 	Attachments []struct {
 		URL         string `json:"url"`
@@ -99,8 +100,8 @@ func (h *NewsHandler) List(w http.ResponseWriter, r *http.Request) {
 	var items []models.News
 	var err error
 
-	if h.discordBotToken != "" && (category == "user" || category == "users" || category == "system") {
-		if items, err = h.fetchCategorizedDiscordNews(ctx, category, limit, authorID); err == nil {
+	if h.discordBotToken != "" && (category == "" || category == "all" || category == "user" || category == "users" || category == "system") {
+		if items, err = h.fetchCategorizedDiscordNews(ctx, category, limit, authorID); err == nil && (len(items) > 0 || category != "") {
 			_ = h.enrichNewsInteractions(ctx, items, currentDiscordID)
 			writeJSON(w, http.StatusOK, items)
 			return
@@ -134,6 +135,16 @@ func (h *NewsHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *NewsHandler) fetchCategorizedDiscordNews(ctx context.Context, category string, limit int64, authorID string) ([]models.News, error) {
+	if category == "" || category == "all" {
+		systemItems, systemErr := h.fetchDiscordNewsFromChannels(ctx, []string{systemNewsChannelID}, "Системные", "system", limit, false, "")
+		userItems, userErr := h.fetchDiscordNewsFromChannels(ctx, userNewsChannelIDs, "Пользовательские", "user", limit, true, authorID)
+		if systemErr != nil && userErr != nil {
+			return nil, systemErr
+		}
+		items := append(systemItems, userItems...)
+		sortNews(items)
+		return limitNews(items, limit), nil
+	}
 	if category == "system" {
 		return h.fetchDiscordNewsFromChannels(ctx, []string{systemNewsChannelID}, "Системные", "system", limit, false, "")
 	}
@@ -347,6 +358,11 @@ func (h *NewsHandler) fetchDiscordNewsFromChannels(ctx context.Context, channelI
 }
 
 func (h *NewsHandler) discordNewsItem(message discordNewsMessage, channelID, source, category string, imagesOnly bool) (models.News, bool) {
+	if category == "system" {
+		source = "Системные"
+	} else if category == "user" {
+		source = "Пользовательские"
+	}
 	imageURL := discordMessageImageURL(message)
 	if imagesOnly && imageURL == "" {
 		return models.News{}, false
@@ -354,6 +370,9 @@ func (h *NewsHandler) discordNewsItem(message discordNewsMessage, channelID, sou
 	title, text := discordMessageText(message)
 	if title == "" {
 		title, text = titleAndIntro(text)
+	}
+	if title == "РџРѕСЃС‚ РёРіСЂРѕРєР°" || title == "РќРѕРІРѕСЃС‚СЊ Amy" {
+		title = "Пост игрока"
 	}
 	if title == "" && imageURL != "" {
 		title = "Пост игрока"
@@ -369,17 +388,18 @@ func (h *NewsHandler) discordNewsItem(message discordNewsMessage, channelID, sou
 		author = strings.TrimSpace(message.Author.Username)
 	}
 	return models.News{
-		ID:        "discord:" + category + ":" + message.ID,
-		Title:     truncateRunes(title, 96),
-		Intro:     truncateRunes(text, 220),
-		Tags:      []string{source},
-		Source:    source,
-		URL:       h.discordMessageURL(channelID, message.ID),
-		ImageURL:  imageURL,
-		Category:  category,
-		Author:    author,
-		AuthorID:  strings.TrimSpace(message.Author.ID),
-		CreatedAt: parseNewsTime(message.Timestamp),
+		ID:           "discord:" + category + ":" + message.ID,
+		Title:        truncateRunes(title, 96),
+		Intro:        truncateRunes(text, 220),
+		Tags:         []string{source},
+		Source:       source,
+		URL:          h.discordMessageURL(channelID, message.ID),
+		ImageURL:     imageURL,
+		Category:     category,
+		Author:       author,
+		AuthorID:     strings.TrimSpace(message.Author.ID),
+		AuthorAvatar: avatarURLFor(strings.TrimSpace(message.Author.ID), strings.TrimSpace(message.Author.Avatar)),
+		CreatedAt:    parseNewsTime(message.Timestamp),
 	}, true
 }
 

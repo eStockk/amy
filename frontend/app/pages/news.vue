@@ -37,6 +37,8 @@
         :variant="item.variant"
         :image-url="item.imageUrl"
         :author="item.author"
+        :author-id="item.authorId"
+        :author-avatar="item.authorAvatar"
         :like-count="item.likeCount"
         :comment-count="item.commentCount"
         :liked-by-me="item.likedByMe"

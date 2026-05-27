@@ -13,6 +13,7 @@ type News struct {
 	Category     string    `json:"category,omitempty"`
 	Author       string    `json:"author,omitempty"`
 	AuthorID     string    `json:"authorId,omitempty"`
+	AuthorAvatar string    `json:"authorAvatar,omitempty"`
 	LikeCount    int       `json:"likeCount"`
 	CommentCount int       `json:"commentCount"`
 	LikedByMe    bool      `json:"likedByMe"`

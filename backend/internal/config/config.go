@@ -36,7 +36,7 @@ func Load() Config {
 		DiscordTicketWebhook:   getEnv("DISCORD_TICKET_WEBHOOK", ""),
 		DiscordRPWebhook:       getEnv("DISCORD_RP_WEBHOOK", ""),
 		RPModeratorIDs:         getEnv("DISCORD_RP_MODERATOR_IDS", ""),
-		MinecraftServerAddr:    getEnv("MINECRAFT_SERVER_ADDRESS", "play.amy-world.ru"),
+		MinecraftServerAddr:    getEnv("MINECRAFT_SERVER_ADDRESS", "amyworld.ru"),
 		TelegramNewsChannel:    getEnv("TELEGRAM_NEWS_CHANNEL", ""),
 		DiscordNewsChannelID:   getEnv("DISCORD_NEWS_CHANNEL_ID", ""),
 		DiscordTicketChannelID: getEnv("DISCORD_TICKET_CHANNEL_ID", ""),

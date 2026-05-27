@@ -17,7 +17,7 @@ export function useServerStatus() {
       key: 'server-status',
       server: false,
       default: () => ({
-        address: 'play.amy-world.ru',
+        address: 'amyworld.ru',
         online: false,
         players: { online: 0, max: 0 }
       }),
