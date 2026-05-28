@@ -29,6 +29,7 @@ type DiscordAuthHandler struct {
 	rpModeratorIDs   map[string]struct{}
 	discordBotToken  string
 	discordGuildID   string
+	skinStorageDir   string
 	httpClient       *http.Client
 }
 
@@ -100,6 +101,7 @@ type publicProfile struct {
 	Race                   string              `json:"race,omitempty"`
 	Gender                 string              `json:"gender,omitempty"`
 	BirthDate              string              `json:"birthDate,omitempty"`
+	SkinURL                string              `json:"skinUrl,omitempty"`
 	DiscordRoles           []publicDiscordRole `json:"discordRoles,omitempty"`
 	ThemeRoleID            string              `json:"themeRoleId,omitempty"`
 	ThemeColor             string              `json:"themeColor,omitempty"`
@@ -125,6 +127,7 @@ type rpApplicationSummaryOut struct {
 	HeightCm     int        `json:"heightCm,omitempty"`
 	BirthDate    string     `json:"birthDate,omitempty"`
 	PrisonReason string     `json:"prisonReason,omitempty"`
+	SkinURL      string     `json:"skinUrl,omitempty"`
 	CreatedAt    *time.Time `json:"createdAt,omitempty"`
 	UpdatedAt    *time.Time `json:"updatedAt,omitempty"`
 	ModeratedAt  *time.Time `json:"moderatedAt,omitempty"`
@@ -144,7 +147,8 @@ func NewDiscordAuthHandler(
 	rpWebhookURL,
 	rpModeratorIDsRaw,
 	discordBotToken,
-	discordGuildID string,
+	discordGuildID,
+	skinStorageDir string,
 ) *DiscordAuthHandler {
 	return &DiscordAuthHandler{
 		db:               db,
@@ -157,6 +161,7 @@ func NewDiscordAuthHandler(
 		rpModeratorIDs:   parseDiscordIDSet(rpModeratorIDsRaw),
 		discordBotToken:  strings.TrimSpace(discordBotToken),
 		discordGuildID:   strings.TrimSpace(discordGuildID),
+		skinStorageDir:   strings.TrimSpace(skinStorageDir),
 		httpClient:       &http.Client{Timeout: 8 * time.Second},
 	}
 }
@@ -825,6 +830,7 @@ func applyRPApplicationToProfile(profile *publicProfile, app *rpApplicationDoc) 
 	profile.Race = strings.TrimSpace(app.Race)
 	profile.Gender = strings.TrimSpace(app.Gender)
 	profile.BirthDate = strings.TrimSpace(app.BirthDate)
+	profile.SkinURL = strings.TrimSpace(app.SkinURL)
 	if profile.RPName != "" {
 		parts := strings.Fields(profile.RPName)
 		if len(parts) > 0 {

@@ -5,7 +5,10 @@
         <span v-for="tag in tags" :key="tag"># {{ tag }}</span>
       </div>
       <button class="like" type="button" :class="{ active: localLiked }" @click="toggleLike">
-        {{ localLiked ? '♥' : '♡' }} <span>{{ localLikeCount }}</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M20.8 4.9a5.5 5.5 0 0 0-7.8 0L12 6l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.3 1-1a5.5 5.5 0 0 0 0-7.8Z" />
+        </svg>
+        <span>{{ localLikeCount }}</span>
       </button>
     </div>
     <div v-if="source || formattedDate" class="meta">
@@ -39,7 +42,11 @@
     <Teleport to="body">
       <div v-if="modalOpen" class="modal-backdrop" @click.self="closeModal">
         <article class="post-modal" role="dialog" aria-modal="true" aria-label="Новость">
-          <button class="modal-close" type="button" @click="closeModal">×</button>
+          <button class="modal-close" type="button" aria-label="Закрыть" @click="closeModal">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m6 6 12 12M18 6 6 18" />
+            </svg>
+          </button>
           <section class="modal-main">
             <img v-if="imageUrl" class="modal-image" :src="imageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
             <div v-else class="modal-placeholder" :class="variant"></div>
@@ -63,9 +70,18 @@
             </div>
             <div class="modal-stats">
               <button class="like" type="button" :class="{ active: localLiked }" @click="toggleLike">
-                {{ localLiked ? '♥' : '♡' }} <span>{{ localLikeCount }}</span>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M20.8 4.9a5.5 5.5 0 0 0-7.8 0L12 6l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.3 1-1a5.5 5.5 0 0 0 0-7.8Z" />
+                </svg>
+                <span>{{ localLikeCount }}</span>
               </button>
-              <span>💬 {{ commentsLoaded ? comments.length : localCommentCount }}</span>
+              <span class="comment-stat">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M5 6.5A3.5 3.5 0 0 1 8.5 3h7A3.5 3.5 0 0 1 19 6.5v5A3.5 3.5 0 0 1 15.5 15H13l-4.5 4v-4A3.5 3.5 0 0 1 5 11.5v-5Z" />
+                  <path d="M9 8h6M9 11h4" />
+                </svg>
+                {{ commentsLoaded ? comments.length : localCommentCount }}
+              </span>
             </div>
             <div class="modal-comments">
               <p v-if="commentsPending" class="comment-muted">Загружаем...</p>
@@ -272,6 +288,10 @@ const sendComment = async () => {
 }
 
 .like {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   border-radius: 999px;
   border: 1px solid var(--stroke);
   background: transparent;
@@ -279,6 +299,20 @@ const sendComment = async () => {
   min-width: 44px;
   height: 32px;
   cursor: pointer;
+}
+
+.like svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.like.active svg {
+  fill: currentColor;
 }
 
 .like.active {
@@ -424,7 +458,17 @@ p {
   background: rgba(0, 0, 0, 0.36);
   color: var(--text);
   cursor: pointer;
-  font-size: 22px;
+}
+
+.modal-close svg,
+.comment-stat svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .modal-main {
@@ -500,6 +544,12 @@ p {
   align-items: center;
   gap: 10px;
   color: var(--muted);
+}
+
+.comment-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .modal-comments {

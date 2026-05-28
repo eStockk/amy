@@ -8,6 +8,7 @@
   heightCm?: number
   birthDate?: string
   prisonReason?: string
+  skinUrl?: string
   createdAt?: string
   updatedAt?: string
   moderatedAt?: string

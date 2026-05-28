@@ -49,7 +49,12 @@
                 </button>
               </div>
             </div>
-            <button class="tool-button" type="button" title="Tenor GIF" @click="toggleGIFPanel">GIF</button>
+            <button class="tool-button" type="button" title="Tenor GIF" aria-label="Tenor GIF" @click="toggleGIFPanel">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v13a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 18.5v-13Z" />
+                <path d="M8 9h5M8 12h8M8 15h4" />
+              </svg>
+            </button>
             <button class="primary" type="submit" :disabled="sending || (!messageText && !gifUrl)">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M4 12 20 4l-4 16-4-6-8-2Z" />
@@ -167,7 +172,7 @@ const searchGIFs = async () => {
     })
     gifs.value = response.results
   } catch {
-    gifError.value = 'Tenor GIF пока не настроен.'
+    gifError.value = 'Tenor GIF требует ключ TENOR_API_KEY на сервере.'
   } finally {
     gifLoading.value = false
   }
@@ -333,7 +338,7 @@ textarea {
 .send-tools {
   position: relative;
   display: grid;
-  grid-template-columns: 54px auto;
+  grid-template-columns: 42px auto;
   gap: 8px;
   align-items: end;
 }
@@ -352,6 +357,12 @@ textarea {
   font-weight: 700;
 }
 
+.tool-button {
+  width: 42px;
+  height: 42px;
+  padding: 0;
+}
+
 .ghost,
 .tool-button {
   background: rgba(255, 255, 255, 0.08);
@@ -364,7 +375,8 @@ textarea {
 }
 
 .ghost svg,
-.primary svg {
+.primary svg,
+.tool-button svg {
   width: 18px;
   height: 18px;
   fill: none;

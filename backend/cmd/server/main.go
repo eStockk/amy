@@ -65,6 +65,7 @@ func main() {
 		cfg.RPModeratorIDs,
 		cfg.DiscordBotToken,
 		cfg.DiscordGuildID,
+		cfg.SkinStorageDir,
 	)
 
 	syncCtx, syncCancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -92,6 +93,8 @@ func main() {
 	mux.HandleFunc("/api/auth/presence", discordHandler.PresencePing)
 	mux.HandleFunc("/api/profiles/theme", discordHandler.UpdateProfileTheme)
 	mux.HandleFunc("/api/profiles/", discordHandler.PublicProfile)
+	mux.HandleFunc("/api/rp/skins", discordHandler.UploadRPSkin)
+	mux.Handle("/api/uploads/skins/", discordHandler.SkinFileServer())
 	mux.HandleFunc("/api/rp/applications", discordHandler.SubmitRPApplication)
 	mux.HandleFunc("/api/rp/applications/", discordHandler.ModerateRPApplication)
 	mux.HandleFunc("/api/support/notifications", supportHandler.Notifications)

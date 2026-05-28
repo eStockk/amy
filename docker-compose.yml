@@ -70,11 +70,13 @@ services:
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       SUPPORT_PUSH_SUBJECT: ${SUPPORT_PUSH_SUBJECT:-mailto:support@amyworld.ru}
       SUPPORT_STORAGE_DIR: ${SUPPORT_STORAGE_DIR:-/var/lib/amy/support}
+      SKIN_STORAGE_DIR: ${SKIN_STORAGE_DIR:-/var/lib/amy/skins}
       TENOR_API_KEY: ${TENOR_API_KEY:-}
     ports:
       - "${BACKEND_BIND:-127.0.0.1}:${BACKEND_PORT:-8080}:8080"
     volumes:
       - support-data:/var/lib/amy/support
+      - skin-data:/var/lib/amy/skins
 
   frontend:
     build:
@@ -301,6 +303,7 @@ services:
 volumes:
   postgres-data: {}
   support-data: {}
+  skin-data: {}
   prometheus-data: {}
   grafana-data: {}
   node-exporter-textfile: {}

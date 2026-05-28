@@ -42,6 +42,13 @@
             </span>
           </div>
 
+          <MinecraftSkinViewer
+            v-if="profile.hasAcceptedApplication && profile.skinUrl"
+            class="profile-skin"
+            :skin-url="profile.skinUrl"
+            compact
+          />
+
           <label v-if="isOwner && themeRoles.length" class="theme-picker">
             <span>Окрас профиля</span>
             <select v-model="selectedThemeRoleId" @change="saveThemeRole">
@@ -83,7 +90,7 @@
       </aside>
 
       <div class="right-col">
-        <section v-if="isOwner" class="panel application-card">
+        <section v-if="isOwner && !applicationAccepted" class="panel application-card">
           <div class="section-head">
             <h3>RP-заявка</h3>
             <span class="badge">{{ progressCompleted }}/12</span>
@@ -136,21 +143,21 @@
     </section>
 
     <Teleport to="body">
-      <div v-if="isOwner && rpModalOpen" class="modal-backdrop" @click.self="closeRpModal">
+      <div v-if="isOwner && rpModalOpen" class="modal-backdrop" @click.self="handleRpBackdrop">
         <section class="panel modal-window" role="dialog" aria-modal="true" aria-label="RP-заявка">
           <header class="modal-head">
             <div>
               <p class="eyebrow">RP-заявка</p>
               <h3>Анкета игрока</h3>
             </div>
-            <button class="ghost" type="button" @click="closeRpModal">Закрыть</button>
+            <button v-if="!previewOpen" class="ghost" type="button" @click="closeRpModal">Закрыть</button>
           </header>
 
           <div class="progress">
             <span :style="{ width: `${progressPercent}%` }"></span>
           </div>
 
-          <form class="form-grid" @submit.prevent="submitApplication">
+          <form v-if="!previewOpen" class="form-grid" @submit.prevent="openPreview">
             <label>
               <span>1. Ваш ник в игре</span>
               <input v-model.trim="form.nickname" type="text" maxlength="16" required />
@@ -168,7 +175,7 @@
 
             <label>
               <span>4. Дата рождения</span>
-              <input v-model="form.birthDate" type="date" required />
+              <input v-model="form.birthDate" type="date" min="1400-01-01" max="1859-12-31" required />
             </label>
 
             <label>
@@ -206,20 +213,72 @@
               <textarea v-model.trim="form.prisonReason" rows="4" required></textarea>
             </label>
 
-            <label class="wide">
-              <span>12. Ссылка на скин (только безопасный HTTPS URL на png/jpg/webp)</span>
-              <input v-model.trim="form.skinUrl" type="url" required />
-            </label>
+            <div class="wide upload-field">
+              <span>12. Скин персонажа</span>
+              <input ref="skinInput" type="file" accept="image/png,image/jpeg,image/webp" hidden @change="uploadSkin" />
+              <button class="ghost upload-button" type="button" :disabled="skinUploading" @click="skinInput?.click()">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 16V4" />
+                  <path d="m7 9 5-5 5 5" />
+                  <path d="M5 20h14" />
+                </svg>
+                {{ skinUploading ? 'Загружаем...' : skinUploadLabel }}
+              </button>
+              <span v-if="form.skinUrl" class="upload-note">Скин прикреплен к анкете.</span>
+            </div>
 
             <div class="wide actions-row">
               <button class="primary" type="submit" :disabled="submitPending || applicationLocked">
-                {{ submitPending ? 'Отправляем...' : 'Отправить RP-заявку' }}
+                Представить анкету
               </button>
               <button class="ghost" type="button" @click="closeRpModal">Отмена</button>
             </div>
           </form>
 
+          <div v-else class="preview-grid">
+            <aside class="preview-skin">
+              <MinecraftSkinViewer :skin-url="form.skinUrl" />
+              <strong>{{ form.rpName || form.nickname }}</strong>
+            </aside>
+            <section class="preview-info">
+              <div class="preview-facts">
+                <div><span>Возраст</span><strong>{{ characterAge }} лет</strong></div>
+                <div><span>Дата рождения</span><strong>{{ formatDate(form.birthDate, true) }}</strong></div>
+                <div><span>Раса</span><strong>{{ form.race }}</strong></div>
+                <div><span>Пол</span><strong>{{ form.gender }}</strong></div>
+                <div><span>Причина ссылки</span><strong>{{ form.prisonReason }}</strong></div>
+              </div>
+              <div class="bio-preview">
+                <h4>Биография</h4>
+                <p>{{ form.biography }}</p>
+              </div>
+              <div class="preview-actions">
+                <template v-if="!gusarTypingStarted">
+                  <button class="primary" type="button" :disabled="submitPending" @click="submitApplication">
+                    {{ submitPending ? 'Отправляем...' : 'Отправить' }}
+                  </button>
+                  <button class="ghost" type="button" :disabled="submitPending" @click="rewriteApplication">Переписать</button>
+                </template>
+                <div v-else class="gusar-reaction">
+                  <p class="eyebrow">Гусар</p>
+                  <p>{{ gusarTypedText }}<span v-if="gusarTyping" class="caret"></span></p>
+                  <button v-if="gusarDone" class="primary fade-in" type="button" @click="finishGusarFlow">Далее</button>
+                </div>
+              </div>
+            </section>
+          </div>
+
           <p v-if="submitMessage" class="status" :class="{ error: submitError }">{{ submitMessage }}</p>
+        </section>
+      </div>
+    </Teleport>
+
+    <Teleport to="body">
+      <div v-if="previewWarningOpen" class="warning-backdrop">
+        <section class="panel warning-modal" role="alertdialog" aria-modal="true">
+          <h3>Анкета в режиме представления</h3>
+          <p class="muted">Выйти отсюда можно только после отправки анкеты или через кнопку «Переписать».</p>
+          <button class="primary" type="button" @click="previewWarningOpen = false">Понятно</button>
         </section>
       </div>
     </Teleport>
@@ -228,6 +287,7 @@
 
 <script setup lang="ts">
 import logo from '~/assets/amy-logo.png'
+import MinecraftSkinViewer from '~/components/MinecraftSkinViewer.vue'
 import NewsCard from '~/components/NewsCard.vue'
 import type { AuthUser } from '~/composables/useAuth'
 import { useAuth } from '~/composables/useAuth'
@@ -245,6 +305,7 @@ type PublicProfile = {
   race?: string
   gender?: string
   birthDate?: string
+  skinUrl?: string
   discordRoles?: Array<{
     id: string
     name: string
@@ -295,7 +356,16 @@ const deleteMessage = ref('')
 const deleteError = ref(false)
 
 const rpModalOpen = ref(false)
+const previewOpen = ref(false)
+const previewWarningOpen = ref(false)
+const gusarTypingStarted = ref(false)
+const gusarTyping = ref(false)
+const gusarDone = ref(false)
+const gusarTypedText = ref('')
 const selectedThemeRoleId = ref('')
+const skinInput = ref<HTMLInputElement | null>(null)
+const skinUploading = ref(false)
+const draftLoaded = ref(false)
 
 const form = reactive({
   nickname: '',
@@ -311,6 +381,10 @@ const form = reactive({
   prisonReason: '',
   skinUrl: ''
 })
+
+const rpDraftKey = computed(() => `amy-rp-draft:${user.value?.id || profileId.value || 'guest'}`)
+
+const skinUploadLabel = computed(() => (form.skinUrl ? 'Заменить скин' : 'Загрузить скин'))
 
 const fullRPName = computed(() => {
   if (!profile.value) return '\u041d\u0435 \u0443\u043a\u0430\u0437\u0430\u043d'
@@ -405,6 +479,12 @@ const progressCompleted = computed(() => {
 
 const progressPercent = computed(() => Math.round((progressCompleted.value / 12) * 100))
 
+const characterAge = computed(() => {
+  const match = /^(\d{4})-\d{2}-\d{2}$/.exec(form.birthDate)
+  if (!match) return 0
+  return Math.max(0, 1875 - Number(match[1]))
+})
+
 const fillFromCurrentState = (authUser?: AuthUser | null) => {
   if (!authUser) return
 
@@ -415,6 +495,47 @@ const fillFromCurrentState = (authUser?: AuthUser | null) => {
   if (authUser.rpApplication?.gender) form.gender = authUser.rpApplication.gender
   if (authUser.rpApplication?.heightCm) form.heightCm = authUser.rpApplication.heightCm
   if (authUser.rpApplication?.prisonReason) form.prisonReason = authUser.rpApplication.prisonReason
+  if (authUser.rpApplication?.skinUrl) form.skinUrl = authUser.rpApplication.skinUrl
+}
+
+const saveDraft = () => {
+  if (!import.meta.client || !isOwner.value || applicationAccepted.value || !draftLoaded.value) return
+  sessionStorage.setItem(rpDraftKey.value, JSON.stringify({ ...form }))
+}
+
+const loadDraft = () => {
+  if (!import.meta.client || !isOwner.value || applicationAccepted.value) return
+  const raw = sessionStorage.getItem(rpDraftKey.value)
+  if (!raw) {
+    draftLoaded.value = true
+    return
+  }
+  try {
+    const draft = JSON.parse(raw) as Partial<typeof form>
+    Object.assign(form, {
+      nickname: draft.nickname || form.nickname,
+      source: draft.source || form.source,
+      rpName: draft.rpName || form.rpName,
+      birthDate: draft.birthDate || form.birthDate,
+      race: draft.race || form.race,
+      gender: draft.gender || form.gender,
+      heightCm: Number(draft.heightCm) || form.heightCm,
+      skills: draft.skills || form.skills,
+      plan: draft.plan || form.plan,
+      biography: draft.biography || form.biography,
+      prisonReason: draft.prisonReason || form.prisonReason,
+      skinUrl: draft.skinUrl || form.skinUrl
+    })
+  } catch {
+    sessionStorage.removeItem(rpDraftKey.value)
+  } finally {
+    draftLoaded.value = true
+  }
+}
+
+const clearDraft = () => {
+  if (!import.meta.client) return
+  sessionStorage.removeItem(rpDraftKey.value)
 }
 
 const formatDate = (raw?: string, dateOnly = false) => {
@@ -484,9 +605,11 @@ const loadProfile = async () => {
         race: response.profile.race || user.value.rpApplication?.race,
         gender: response.profile.gender || user.value.rpApplication?.gender,
         birthDate: response.profile.birthDate || user.value.rpApplication?.birthDate,
+        skinUrl: response.profile.skinUrl || user.value.rpApplication?.skinUrl,
         joinedAt: response.profile.joinedAt
       }
       fillFromCurrentState(user.value)
+      loadDraft()
     }
 
     await loadPlayerPosts()
@@ -524,6 +647,7 @@ const loadPlayerPosts = async () => {
 }
 
 const validateSkinUrl = (raw: string) => {
+  if (raw.startsWith('/api/uploads/skins/')) return true
   try {
     const parsed = new URL(raw)
     if (parsed.protocol !== 'https:') return false
@@ -550,51 +674,112 @@ const validateSkinUrl = (raw: string) => {
 
 const countSentences = (text: string) => (text.match(/[.!?]/g) || []).length
 
-const submitApplication = async () => {
+const validateApplicationForm = () => {
   submitMessage.value = ''
   submitError.value = false
 
   if (applicationAccepted.value) {
     submitError.value = true
     submitMessage.value = acceptedSubmitErrorText
-    return
+    return false
   }
 
   if (applicationLocked.value) {
     submitError.value = true
     submitMessage.value = applicationSummary.value?.status === 'call' ? callHint : pendingSubmitErrorText
-    return
+    return false
   }
 
   if (!/^[A-Za-z0-9_]{3,16}$/.test(form.nickname)) {
     submitError.value = true
     submitMessage.value = 'Ник должен содержать 3-16 символов: латиница, цифры или _.'
-    return
+    return false
   }
 
   if (!form.birthDate || !form.race || !form.gender || !form.skills || !form.plan || !form.biography || !form.prisonReason || !form.skinUrl) {
     submitError.value = true
     submitMessage.value = 'Заполните все обязательные поля заявки.'
-    return
+    return false
+  }
+
+  const birthYear = Number(form.birthDate.slice(0, 4))
+  if (!Number.isFinite(birthYear) || birthYear < 1400 || birthYear > 1859) {
+    submitError.value = true
+    submitMessage.value = 'Год рождения должен быть от 1400 до 1859.'
+    return false
   }
 
   if (!Number.isFinite(form.heightCm) || form.heightCm < 120 || form.heightCm > 250) {
     submitError.value = true
     submitMessage.value = 'Рост должен быть числом от 120 до 250 см.'
-    return
+    return false
   }
 
   if (countSentences(form.biography) < 5) {
     submitError.value = true
     submitMessage.value = 'Биография должна содержать минимум 5 предложений.'
-    return
+    return false
   }
 
   if (!validateSkinUrl(form.skinUrl)) {
     submitError.value = true
     submitMessage.value = 'Ссылка на скин не прошла проверку безопасности.'
+    return false
+  }
+
+  return true
+}
+
+const uploadSkin = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+
+  submitMessage.value = ''
+  submitError.value = false
+
+  if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+    submitError.value = true
+    submitMessage.value = 'Загрузите скин в формате PNG, JPG или WEBP.'
+    input.value = ''
     return
   }
+  if (file.size > 4 * 1024 * 1024) {
+    submitError.value = true
+    submitMessage.value = 'Файл скина должен быть не больше 4 МБ.'
+    input.value = ''
+    return
+  }
+
+  const body = new FormData()
+  body.append('skin', file)
+  skinUploading.value = true
+  try {
+    const response = await $fetch<{ path: string; url: string }>(`${config.public.apiBase}/rp/skins`, {
+      method: 'POST',
+      credentials: 'include',
+      body
+    })
+    form.skinUrl = response.path || response.url
+    saveDraft()
+  } catch (error: unknown) {
+    submitError.value = true
+    const message = (error as { data?: { error?: string } })?.data?.error
+    submitMessage.value = message || 'Не удалось загрузить скин.'
+  } finally {
+    skinUploading.value = false
+    input.value = ''
+  }
+}
+
+const openPreview = () => {
+  if (!validateApplicationForm()) return
+  previewOpen.value = true
+  previewWarningOpen.value = false
+}
+
+const submitApplication = async () => {
+  if (!validateApplicationForm()) return
 
   submitPending.value = true
   try {
@@ -613,9 +798,8 @@ const submitApplication = async () => {
       skinUrl: form.skinUrl
     })
 
-    submitMessage.value = 'Заявка отправлена. Ожидайте решения администрации.'
-    rpModalOpen.value = false
-    await loadProfile()
+    await startGusarReaction()
+    clearDraft()
   } catch (error: unknown) {
     submitError.value = true
     const message = (error as { data?: { error?: string } })?.data?.error
@@ -654,11 +838,29 @@ const logoutAndBack = async () => {
 const openRpModal = () => {
   submitMessage.value = ''
   submitError.value = false
+  previewOpen.value = false
+  previewWarningOpen.value = false
+  gusarTypingStarted.value = false
+  gusarTyping.value = false
+  gusarDone.value = false
+  gusarTypedText.value = ''
   rpModalOpen.value = true
 }
 
 const closeRpModal = () => {
+  if (previewOpen.value) {
+    previewWarningOpen.value = true
+    return
+  }
   rpModalOpen.value = false
+}
+
+const handleRpBackdrop = () => {
+  if (previewOpen.value) {
+    previewWarningOpen.value = true
+    return
+  }
+  closeRpModal()
 }
 
 const saveThemeRole = async () => {
@@ -678,9 +880,41 @@ const saveThemeRole = async () => {
   }
 }
 
+const startGusarReaction = async () => {
+  gusarTypingStarted.value = true
+  gusarTyping.value = true
+  gusarDone.value = false
+  gusarTypedText.value = ''
+
+  const text = `Хм. ${form.rpName || form.nickname} звучит достаточно убедительно. Я передал анкету модерации и буду ждать, как персонаж покажет себя на острове.`
+  for (const char of text) {
+    gusarTypedText.value += char
+    await new Promise((resolve) => window.setTimeout(resolve, 22))
+  }
+  gusarTyping.value = false
+  await new Promise((resolve) => window.setTimeout(resolve, 180))
+  gusarDone.value = true
+}
+
+const rewriteApplication = () => {
+  if (submitPending.value || gusarTypingStarted.value) return
+  previewOpen.value = false
+  previewWarningOpen.value = false
+}
+
+const finishGusarFlow = async () => {
+  rpModalOpen.value = false
+  previewOpen.value = false
+  gusarTypingStarted.value = false
+  gusarDone.value = false
+  gusarTypedText.value = ''
+  submitMessage.value = 'Заявка отправлена. Ожидайте решения администрации.'
+  await loadProfile()
+}
+
 const handleEscape = (event: KeyboardEvent) => {
   if (event.key === 'Escape' && rpModalOpen.value) {
-    rpModalOpen.value = false
+    closeRpModal()
   }
 }
 
@@ -709,6 +943,14 @@ watch(rpModalOpen, (opened) => {
   if (!import.meta.client) return
   document.body.style.overflow = opened ? 'hidden' : ''
 })
+
+watch(
+  form,
+  () => {
+    saveDraft()
+  },
+  { deep: true }
+)
 </script>
 
 <style scoped>
@@ -878,6 +1120,10 @@ h1 {
   font-size: 12px;
 }
 
+.profile-skin {
+  min-height: 260px;
+}
+
 .theme-picker {
   display: grid;
   gap: 6px;
@@ -971,6 +1217,36 @@ label {
 label span {
   font-size: 13px;
   color: var(--muted);
+}
+
+.upload-field {
+  display: grid;
+  gap: 8px;
+}
+
+.upload-field > span:first-child {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.upload-button {
+  width: max-content;
+  gap: 8px;
+}
+
+.upload-button svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.upload-note {
+  color: #9ff4be;
+  font-size: 12px;
 }
 
 .wide {
@@ -1084,6 +1360,147 @@ textarea {
   gap: 12px;
 }
 
+.preview-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.2fr);
+  gap: 14px;
+  min-height: 0;
+}
+
+.preview-skin {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.preview-skin strong {
+  justify-self: center;
+  margin-top: -72px;
+  z-index: 1;
+  padding: 7px 12px;
+  border-radius: 8px;
+  background: rgba(8, 7, 10, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.preview-info {
+  display: grid;
+  grid-template-rows: auto minmax(180px, 1fr) auto;
+  gap: 12px;
+  min-height: 0;
+}
+
+.preview-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.preview-facts div {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.preview-facts span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.preview-facts strong {
+  overflow-wrap: anywhere;
+}
+
+.bio-preview {
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.bio-preview h4 {
+  margin: 0;
+}
+
+.bio-preview p {
+  white-space: pre-wrap;
+}
+
+.preview-actions {
+  min-height: 58px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.gusar-reaction {
+  width: min(520px, 100%);
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--profile-accent), transparent 45%);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.caret {
+  display: inline-block;
+  width: 8px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -2px;
+  background: currentColor;
+  animation: blink 0.8s steps(2, start) infinite;
+}
+
+.fade-in {
+  animation: fadeIn 0.35s ease forwards;
+}
+
+.warning-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(7, 6, 9, 0.48);
+}
+
+.warning-modal {
+  width: min(440px, 100%);
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (max-width: 1100px) {
   .shell {
     grid-template-columns: 1fr;
@@ -1096,6 +1513,7 @@ textarea {
   }
 
   .posts-grid,
+  .preview-grid,
   .form-grid,
   .row {
     grid-template-columns: 1fr;
@@ -1120,6 +1538,10 @@ textarea {
   .modal-window {
     max-height: 100dvh;
     border-radius: 0;
+  }
+
+  .preview-facts {
+    grid-template-columns: 1fr;
   }
 }
 

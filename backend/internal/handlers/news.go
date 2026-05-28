@@ -346,6 +346,15 @@ func (h *NewsHandler) fetchDiscordNewsFromChannels(ctx context.Context, channelI
 			if authorID != "" && message.Author.ID != authorID {
 				continue
 			}
+			if category == "user" {
+				known, err := h.knownDiscordUser(ctx, message.Author.ID)
+				if err != nil {
+					return nil, err
+				}
+				if !known {
+					continue
+				}
+			}
 			item, ok := h.discordNewsItem(message, channelID, source, category, imagesOnly)
 			if ok {
 				item.Variant = newsVariant(len(items))
@@ -355,6 +364,16 @@ func (h *NewsHandler) fetchDiscordNewsFromChannels(ctx context.Context, channelI
 	}
 	sortNews(items)
 	return limitNews(items, limit), nil
+}
+
+func (h *NewsHandler) knownDiscordUser(ctx context.Context, discordID string) (bool, error) {
+	discordID = strings.TrimSpace(discordID)
+	if discordID == "" {
+		return false, nil
+	}
+	var exists bool
+	err := h.db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM discord_users WHERE discord_id = $1)`, discordID).Scan(&exists)
+	return exists, err
 }
 
 func (h *NewsHandler) discordNewsItem(message discordNewsMessage, channelID, source, category string, imagesOnly bool) (models.News, bool) {
@@ -371,7 +390,7 @@ func (h *NewsHandler) discordNewsItem(message discordNewsMessage, channelID, sou
 	if title == "" {
 		title, text = titleAndIntro(text)
 	}
-	if title == "РџРѕСЃС‚ РёРіСЂРѕРєР°" || title == "РќРѕРІРѕСЃС‚СЊ Amy" {
+	if title == "Пост игрока" || title == "Новость Amy" {
 		title = "Пост игрока"
 	}
 	if title == "" && imageURL != "" {

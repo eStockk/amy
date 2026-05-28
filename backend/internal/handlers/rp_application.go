@@ -9,9 +9,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -67,6 +70,8 @@ type sqlScanner interface {
 }
 
 var imageExtRe = regexp.MustCompile(`(?i)\.(png|jpe?g|webp)$`)
+
+const maxSkinUploadBytes = 4 * 1024 * 1024
 
 func (h *DiscordAuthHandler) SubmitRPApplication(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -342,6 +347,146 @@ func (h *DiscordAuthHandler) DeleteRPApplication(w http.ResponseWriter, r *http.
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+func (h *DiscordAuthHandler) UploadRPSkin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if _, err := h.requireAuthenticatedUser(r); err != nil {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	storageDir := strings.TrimSpace(h.skinStorageDir)
+	if storageDir == "" {
+		writeError(w, http.StatusInternalServerError, "skin storage is not configured")
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxSkinUploadBytes+512*1024)
+	if err := r.ParseMultipartForm(maxSkinUploadBytes + 128*1024); err != nil {
+		writeError(w, http.StatusBadRequest, "skin file is too large")
+		return
+	}
+
+	file, header, err := r.FormFile("skin")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "skin file is required")
+		return
+	}
+	defer file.Close()
+
+	raw, err := io.ReadAll(io.LimitReader(file, maxSkinUploadBytes+1))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "failed to read skin file")
+		return
+	}
+	if len(raw) == 0 || len(raw) > maxSkinUploadBytes {
+		writeError(w, http.StatusBadRequest, "skin file is too large")
+		return
+	}
+
+	contentType := http.DetectContentType(raw)
+	ext := skinExtension(contentType, header.Filename)
+	if ext == "" {
+		writeError(w, http.StatusBadRequest, "skin must be png, jpg or webp")
+		return
+	}
+	if err := os.MkdirAll(storageDir, 0o750); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to prepare skin storage")
+		return
+	}
+
+	fileName := randomHex(16) + ext
+	target := filepath.Join(storageDir, fileName)
+	if err := os.WriteFile(target, raw, 0o640); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save skin")
+		return
+	}
+
+	path := "/api/uploads/skins/" + fileName
+	writeJSON(w, http.StatusCreated, map[string]string{
+		"status": "ok",
+		"path":   path,
+		"url":    absolutePublicURL(r, path),
+	})
+}
+
+func (h *DiscordAuthHandler) SkinFileServer() http.Handler {
+	storageDir := strings.TrimSpace(h.skinStorageDir)
+	if storageDir == "" {
+		storageDir = "data/skins"
+	}
+	fileServer := http.StripPrefix("/api/uploads/skins/", http.FileServer(http.Dir(storageDir)))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		fileServer.ServeHTTP(w, r)
+	})
+}
+
+func skinExtension(contentType, filename string) string {
+	contentType = strings.ToLower(strings.TrimSpace(strings.Split(contentType, ";")[0]))
+	switch contentType {
+	case "image/png":
+		return ".png"
+	case "image/jpeg":
+		return ".jpg"
+	case "image/webp":
+		return ".webp"
+	}
+	if ext := strings.ToLower(filepath.Ext(filename)); ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".webp" {
+		if contentType == "application/octet-stream" || contentType == "" {
+			if ext == ".jpeg" {
+				return ".jpg"
+			}
+			return ext
+		}
+	}
+	if extensions, _ := mime.ExtensionsByType(contentType); len(extensions) > 0 {
+		for _, ext := range extensions {
+			if ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".webp" {
+				if ext == ".jpeg" {
+					return ".jpg"
+				}
+				return ext
+			}
+		}
+	}
+	return ""
+}
+
+func absolutePublicURL(r *http.Request, path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
+		return path
+	}
+	scheme := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto"))
+	if scheme == "" {
+		if r.TLS != nil {
+			scheme = "https"
+		} else {
+			scheme = "http"
+		}
+	}
+	host := strings.TrimSpace(r.Header.Get("X-Forwarded-Host"))
+	if host == "" {
+		host = strings.TrimSpace(r.Host)
+	}
+	if host == "" {
+		return path
+	}
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	return scheme + "://" + host + path
+}
+
 func (h *DiscordAuthHandler) latestApplicationSummary(ctx context.Context, discordID string) (*rpApplicationSummaryOut, error) {
 	doc, err := h.loadLatestApplicationForDiscord(ctx, discordID)
 	if err != nil {
@@ -361,6 +506,7 @@ func (h *DiscordAuthHandler) latestApplicationSummary(ctx context.Context, disco
 		HeightCm:     doc.HeightCm,
 		BirthDate:    doc.BirthDate,
 		PrisonReason: doc.PrisonReason,
+		SkinURL:      doc.SkinURL,
 		CreatedAt:    &doc.CreatedAt,
 		UpdatedAt:    &doc.UpdatedAt,
 		ModeratedAt:  doc.ModeratedAt,
@@ -613,7 +759,7 @@ func (h *DiscordAuthHandler) buildRPApplicationDiscordPayload(doc rpApplicationD
 		{"name": "План развития", "value": trimForDiscord(doc.Plan)},
 		{"name": "Биография", "value": trimForDiscord(doc.Biography)},
 		{"name": "Причина ссылки на тюремный остров", "value": trimForDiscord(doc.PrisonReason)},
-		{"name": "Ссылка на скин", "value": safeValue(doc.SkinURL)},
+		{"name": "Ссылка на скин", "value": safeValue(h.publicSkinURL(doc.SkinURL))},
 	}
 
 	if links := h.rpModerationLinks(doc); links != "" {
@@ -796,11 +942,16 @@ func validateRPRequest(payload rpApplicationRequest) string {
 	if len(payload.Source) > 200 || len(payload.RPName) > 120 || len(payload.Race) > 80 || len(payload.Gender) > 80 {
 		return "one of the text fields is too long"
 	}
-	if len(payload.Skills) > 2200 || len(payload.Plan) > 2200 || len(payload.PrisonReason) > 2200 || len(payload.Biography) > 7000 {
+	if len(payload.Skills) > 2200 || len(payload.Plan) > 2200 || len(payload.PrisonReason) > 2200 || len(payload.Biography) > 30000 {
 		return "skills, plan, prisonReason or biography is too long"
 	}
-	if _, err := time.Parse("2006-01-02", payload.BirthDate); err != nil {
+	birthDate, err := time.Parse("2006-01-02", payload.BirthDate)
+	if err != nil {
 		return "birthDate must be in format YYYY-MM-DD"
+	}
+	year := birthDate.Year()
+	if year < 1400 || year > 1859 {
+		return "birthDate year must be between 1400 and 1859"
 	}
 	if countSentences(payload.Biography) < 5 {
 		return "biography must contain at least 5 sentences"
@@ -820,6 +971,9 @@ func countSentences(text string) int {
 }
 
 func isSafeSkinURL(raw string) bool {
+	if isInternalSkinPath(raw) {
+		return true
+	}
 	parsed, err := url.Parse(raw)
 	if err != nil {
 		return false
@@ -844,6 +998,32 @@ func isSafeSkinURL(raw string) bool {
 		return false
 	}
 	return len(raw) <= 300
+}
+
+func isInternalSkinPath(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if !strings.HasPrefix(raw, "/api/uploads/skins/") {
+		return false
+	}
+	name := strings.TrimPrefix(raw, "/api/uploads/skins/")
+	if name == "" || strings.Contains(name, "/") || strings.Contains(name, `\`) {
+		return false
+	}
+	return imageExtRe.MatchString(name)
+}
+
+func (h *DiscordAuthHandler) publicSkinURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if strings.HasPrefix(raw, "http://") || strings.HasPrefix(raw, "https://") {
+		return raw
+	}
+	if strings.HasPrefix(raw, "/") && strings.TrimSpace(h.frontendURL) != "" {
+		return strings.TrimRight(h.frontendURL, "/") + raw
+	}
+	return raw
 }
 
 func randomHex(size int) string {
