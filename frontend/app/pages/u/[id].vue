@@ -239,11 +239,11 @@
 
           <div v-else class="preview-grid">
             <aside class="preview-skin">
-              <MinecraftSkinViewer class="preview-skin-bg" :skin-url="form.skinUrl" background :zoom="0.66" />
-              <div class="preview-character-name" aria-label="Имя персонажа">
-                <span v-for="line in characterNameLines" :key="line">{{ line }}</span>
-              </div>
+              <MinecraftSkinViewer class="preview-skin-bg" :skin-url="form.skinUrl" background :zoom="0.78" />
             </aside>
+            <div class="preview-character-name" aria-label="Имя персонажа">
+              <span v-for="line in characterNameLines" :key="line">{{ line }}</span>
+            </div>
             <section class="preview-info">
               <div class="preview-facts">
                 <div><span>Возраст</span><strong>{{ characterAge }} лет</strong></div>
@@ -1442,9 +1442,9 @@ textarea {
   z-index: 0;
   left: 8px;
   top: 52px;
-  width: min(320px, 42%);
-  height: min(430px, calc(100% - 68px));
-  min-height: 340px;
+  width: min(416px, 54%);
+  height: min(560px, calc(100% - 28px));
+  min-height: 442px;
   pointer-events: none;
   overflow: visible;
 }
@@ -1458,12 +1458,12 @@ textarea {
 
 .preview-character-name {
   position: absolute;
-  z-index: 1;
-  top: 18px;
-  left: 18px;
+  z-index: 3;
+  top: 70px;
+  left: 26px;
   display: grid;
   gap: 1px;
-  max-width: min(260px, calc(100% - 36px));
+  max-width: min(340px, calc(54% - 34px));
   color: rgba(255, 255, 255, 0.93);
   font-size: clamp(28px, 4vw, 52px);
   font-weight: 800;
@@ -1641,9 +1641,16 @@ textarea {
   }
 
   .preview-skin {
-    width: 260px;
-    height: 360px;
+    width: 338px;
+    height: 468px;
     opacity: 0.78;
+  }
+
+  .preview-character-name {
+    top: 68px;
+    left: 18px;
+    max-width: min(300px, calc(100% - 36px));
+    font-size: clamp(28px, 7vw, 44px);
   }
 
   .preview-info {
@@ -1682,11 +1689,18 @@ textarea {
 
   .preview-skin {
     left: 50%;
-    top: 58px;
-    width: 240px;
-    height: 340px;
+    top: 72px;
+    width: 312px;
+    height: 442px;
     transform: translateX(-50%);
     opacity: 0.45;
+  }
+
+  .preview-character-name {
+    top: 76px;
+    left: 16px;
+    max-width: calc(100% - 32px);
+    font-size: clamp(26px, 10vw, 38px);
   }
 
   .preview-facts,
