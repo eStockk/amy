@@ -239,7 +239,7 @@
 
           <div v-else class="preview-grid">
             <aside class="preview-skin">
-              <MinecraftSkinViewer class="preview-skin-bg" :skin-url="form.skinUrl" background :zoom="0.78" />
+              <MinecraftSkinViewer class="preview-skin-bg" :skin-url="form.skinUrl" background :zoom="0.66" />
               <div class="preview-character-name" aria-label="Имя персонажа">
                 <span v-for="line in characterNameLines" :key="line">{{ line }}</span>
               </div>
@@ -1427,26 +1427,32 @@ textarea {
 }
 
 .preview-grid {
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(340px, 0.95fr) minmax(0, 1.05fr);
-  gap: 14px;
-  min-height: 0;
+  grid-template-columns: minmax(260px, 0.82fr) minmax(0, 1.18fr);
+  gap: 12px;
+  min-height: clamp(420px, 58vh, 620px);
+  overflow: visible;
+  border-radius: 8px;
+  background: radial-gradient(circle at 18% 42%, rgba(255, 255, 255, 0.045), transparent 38%);
 }
 
 .preview-skin {
-  position: relative;
-  min-height: clamp(360px, 48vh, 560px);
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
-  background: radial-gradient(circle at 65% 35%, rgba(255, 255, 255, 0.05), transparent 45%),
-    rgba(255, 255, 255, 0.025);
+  position: absolute;
+  z-index: 0;
+  left: 8px;
+  top: 52px;
+  width: min(320px, 42%);
+  height: min(430px, calc(100% - 68px));
+  min-height: 340px;
+  pointer-events: none;
+  overflow: visible;
 }
 
 .preview-skin-bg {
   position: absolute;
-  inset: 16px 52px 8px 52px;
-  min-height: calc(100% - 24px);
+  inset: 0;
+  min-height: 100%;
   pointer-events: none;
 }
 
@@ -1467,13 +1473,18 @@ textarea {
 }
 
 .preview-info {
+  position: relative;
+  z-index: 1;
+  grid-column: 1 / -1;
   display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.2fr);
   grid-template-rows: auto minmax(180px, 1fr) auto;
   gap: 12px;
   min-height: 0;
 }
 
 .preview-facts {
+  grid-column: 2;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
@@ -1498,6 +1509,8 @@ textarea {
 }
 
 .bio-preview {
+  grid-column: 1 / -1;
+  margin-left: min(220px, 24%);
   min-height: 0;
   overflow: auto;
   display: grid;
@@ -1518,6 +1531,7 @@ textarea {
 }
 
 .preview-actions {
+  grid-column: 1 / -1;
   min-height: 58px;
   display: flex;
   justify-content: flex-end;
@@ -1625,6 +1639,25 @@ textarea {
   .preview-facts {
     grid-template-columns: 1fr;
   }
+
+  .preview-skin {
+    width: 260px;
+    height: 360px;
+    opacity: 0.78;
+  }
+
+  .preview-info {
+    grid-template-columns: 1fr;
+  }
+
+  .preview-facts {
+    grid-column: 1;
+    margin-left: 120px;
+  }
+
+  .bio-preview {
+    margin-left: 80px;
+  }
 }
 
 @media (max-width: 640px) {
@@ -1645,6 +1678,20 @@ textarea {
 
   .chips {
     gap: 6px;
+  }
+
+  .preview-skin {
+    left: 50%;
+    top: 58px;
+    width: 240px;
+    height: 340px;
+    transform: translateX(-50%);
+    opacity: 0.45;
+  }
+
+  .preview-facts,
+  .bio-preview {
+    margin-left: 0;
   }
 
   .chip {
