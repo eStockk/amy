@@ -215,6 +215,18 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
 
+  discord-bot:
+    build:
+      context: .
+      dockerfile: bot.Dockerfile
+    restart: unless-stopped
+    logging: *default-logging
+    mem_limit: 256m
+    mem_reservation: 96m
+    environment:
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.15.0
     restart: unless-stopped

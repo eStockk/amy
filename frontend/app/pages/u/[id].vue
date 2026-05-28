@@ -239,7 +239,7 @@
 
           <div v-else class="preview-grid">
             <aside class="preview-skin">
-              <MinecraftSkinViewer class="preview-skin-bg" :skin-url="form.skinUrl" background :zoom="1.18" />
+              <MinecraftSkinViewer class="preview-skin-bg" :skin-url="form.skinUrl" background :zoom="0.78" />
               <div class="preview-character-name" aria-label="Имя персонажа">
                 <span v-for="line in characterNameLines" :key="line">{{ line }}</span>
               </div>
@@ -916,39 +916,34 @@ const trimSentence = (value: string, max = 150) => {
 const findBioMotive = () => {
   const bio = form.biography.toLowerCase()
   const motives = [
-    { test: ['ад', 'преиспод', 'азраил'], text: 'В биографии чувствуется не просто трагедия, а почти богословская рана: ад, голод и долг перед чем-то старше обычной вины.' },
-    { test: ['голод', 'жрать', 'еда'], text: 'Тема голода повторяется слишком настойчиво, чтобы считать её украшением: это хорошая пружина для поведения персонажа.' },
-    { test: ['проклят', 'кара', 'грех'], text: 'Проклятие и вина у тебя не висят вывеской, а объясняют, почему персонаж может сорваться в самый неподходящий момент.' },
-    { test: ['охот', 'звер', 'твар'], text: 'Охота и звериный след дают ему понятный инстинкт: он не просто разговаривает, он выслеживает слабое место.' },
-    { test: ['остров', 'тюрьм'], text: 'Связь с островом уже есть, и это важно: он не падает в сюжет случайно, а входит туда с тяжёлым поводом.' }
+    { test: ['ад', 'преиспод', 'азраил'], text: 'Про ад и Азраила я отметил отдельно. Люблю, когда человек приходит не с пустым карманом, а сразу с бездной за плечами.' },
+    { test: ['голод', 'жрать', 'еда'], text: 'Голод в тексте торчит не хуже вывески над лавкой. Если это не сыграют, я лично назову это растратой хорошего несчастья.' },
+    { test: ['проклят', 'кара', 'грех'], text: 'Проклятие, кара, грехи. Прекрасно. Ещё один читатель, который сделал беду профессией.' },
+    { test: ['охот', 'звер', 'твар'], text: 'Охота и вся эта грязная привычка выживать читаются ясно: такой на острове сначала смотрит, а потом уже здоровается.' },
+    { test: ['остров', 'тюрьм'], text: 'С островом сцепка есть. Не роскошь, конечно, но для ссылки достаточно, чтобы не выглядеть чемоданом без ручки.' }
   ]
   return motives.find((item) => item.test.some((word) => bio.includes(word)))?.text
 }
 
 const buildGusarReaction = () => {
   const name = form.rpName || form.nickname || 'этот персонаж'
-  const facts = [
-    `${characterAge.value} лет`,
-    form.race,
-    form.gender,
-    `${form.heightCm} см`
-  ].filter(Boolean).join(', ')
+  const facts = [`${characterAge.value} лет`, form.race, form.gender, `${form.heightCm} см`].filter(Boolean).join(', ')
   const appearance = form.skinUrl
-    ? 'По приложенному облику видно, что внешность у персонажа не нейтральная: её можно читать как часть истории, а не как случайный костюм.'
-    : 'Внешность пока придётся держать в голове по описанию, поэтому модерации стоит внимательнее сверить её с биографией.'
-  const motive = findBioMotive() || 'В заявке есть рабочая внутренняя причина двигаться дальше, но я бы смотрел, не растворится ли она в первом же разговоре.'
-  const prison = form.prisonReason ? `Причина ссылки звучит так: «${trimSentence(form.prisonReason, 120)}». Это хороший крючок для острова, если игрок не забудет играть последствия.` : ''
-  const skills = form.skills ? `Навыки заявлены не пусто: ${trimSentence(form.skills, 130)}.` : ''
-  const plan = form.plan ? `План развития тоже намечен: ${trimSentence(form.plan, 130)}.` : ''
+    ? 'Облик приложен, и это уже не голая бумажка на столе. Модератору будет что сверять, а мне что высмеять, если образ развалится.'
+    : 'Внешность не приложена. Смело, конечно: будто в редакцию принесли некролог без имени.'
+  const motive = findBioMotive() || 'Внутренний крючок есть, но я бы проверил его на острове. Бумага многое терпит, люди обычно меньше.'
+  const prison = form.prisonReason ? `Причина ссылки: «${trimSentence(form.prisonReason, 115)}». Звучит как заголовок, за который в нормальной газете хотя бы дадут суп.` : ''
+  const skills = form.skills ? `Навыки: ${trimSentence(form.skills, 115)}. Посмотрим, не окажутся ли они украшением для анкеты.` : ''
+  const plan = form.plan ? `План развития записал: ${trimSentence(form.plan, 115)}. Если доживёт до второго пункта, уже будет новость.` : ''
 
   return [
-    `Хм. ${name}. ${facts ? `Запоминаю: ${facts}.` : 'Фактов пока маловато, но ядро персонажа видно.'}`,
+    `Так. ${name}. Для "Гусарского вестника" сойдёт: ${facts || 'данных мало, зато уверенности, небось, целый воз'}.`,
     appearance,
     motive,
     prison,
     skills,
     plan,
-    'Я передал анкету модерации. Если на острове он будет говорить и действовать так же плотно, как написан здесь, за ним будет интересно наблюдать.'
+    'Анкету я передал модерации. Если персонаж на острове будет таким же плотным, как на бумаге, напишем заметку. Если сдуется, тоже напишем, просто веселее.'
   ].filter(Boolean).join(' ')
 }
 
@@ -1440,24 +1435,18 @@ textarea {
 
 .preview-skin {
   position: relative;
-  min-height: clamp(440px, 58vh, 680px);
+  min-height: clamp(360px, 48vh, 560px);
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
-  background:
-    linear-gradient(45deg, rgba(255, 255, 255, 0.035) 25%, transparent 25%),
-    linear-gradient(-45deg, rgba(255, 255, 255, 0.035) 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, rgba(255, 255, 255, 0.035) 75%),
-    linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.035) 75%),
+  background: radial-gradient(circle at 65% 35%, rgba(255, 255, 255, 0.05), transparent 45%),
     rgba(255, 255, 255, 0.025);
-  background-size: 32px 32px;
-  background-position: 0 0, 0 16px, 16px -16px, -16px 0;
 }
 
 .preview-skin-bg {
   position: absolute;
-  inset: -34px -18px -26px -18px;
-  min-height: calc(100% + 60px);
+  inset: 16px 52px 8px 52px;
+  min-height: calc(100% - 24px);
   pointer-events: none;
 }
 
