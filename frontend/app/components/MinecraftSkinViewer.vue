@@ -1,5 +1,5 @@
 <template>
-  <div class="skin-viewer" :class="{ compact }">
+  <div class="skin-viewer" :class="{ compact, background }">
     <canvas ref="canvasRef" aria-hidden="true"></canvas>
     <p v-if="failed" class="skin-fallback">Скин не загрузился</p>
   </div>
@@ -10,10 +10,14 @@ const props = withDefaults(
   defineProps<{
     skinUrl?: string
     compact?: boolean
+    background?: boolean
+    zoom?: number
   }>(),
   {
     skinUrl: '',
-    compact: false
+    compact: false,
+    background: false,
+    zoom: undefined
   }
 )
 
@@ -50,7 +54,7 @@ onMounted(async () => {
     skin: props.skinUrl
   })
   viewer.autoRotate = true
-  viewer.zoom = props.compact ? 0.78 : 0.66
+  viewer.zoom = props.zoom ?? (props.background ? (props.compact ? 1.05 : 0.9) : props.compact ? 0.78 : 0.66)
   viewer.fov = 42
   viewer.globalLight.intensity = 1.1
   viewer.cameraLight.intensity = 0.75
@@ -98,10 +102,20 @@ onBeforeUnmount(() => {
   min-height: 260px;
 }
 
+.skin-viewer.background {
+  min-height: 100%;
+  background: transparent;
+}
+
 canvas {
   width: 100%;
   height: 100%;
   display: block;
+}
+
+.skin-viewer.background canvas {
+  opacity: 0.42;
+  filter: saturate(1.15) contrast(1.05);
 }
 
 .skin-fallback {

@@ -14,6 +14,15 @@
     <section v-else-if="profile" class="shell" :style="profileThemeStyle">
       <aside class="left-col">
         <article class="panel identity-card">
+          <MinecraftSkinViewer
+            v-if="profile.hasAcceptedApplication && profile.skinUrl"
+            class="profile-skin-bg"
+            :skin-url="profile.skinUrl"
+            compact
+            background
+            :zoom="1.08"
+          />
+
           <div class="avatar-box">
             <img class="avatar" :src="profile.avatarUrl || logo" alt="avatar" />
             <span class="presence" :class="{ offline: !profile.isOnline }"></span>
@@ -41,13 +50,6 @@
               {{ role.name }}
             </span>
           </div>
-
-          <MinecraftSkinViewer
-            v-if="profile.hasAcceptedApplication && profile.skinUrl"
-            class="profile-skin"
-            :skin-url="profile.skinUrl"
-            compact
-          />
 
           <label v-if="isOwner && themeRoles.length" class="theme-picker">
             <span>Окрас профиля</span>
@@ -237,8 +239,10 @@
 
           <div v-else class="preview-grid">
             <aside class="preview-skin">
-              <MinecraftSkinViewer :skin-url="form.skinUrl" />
-              <strong>{{ form.rpName || form.nickname }}</strong>
+              <MinecraftSkinViewer class="preview-skin-bg" :skin-url="form.skinUrl" background :zoom="1.18" />
+              <div class="preview-character-name" aria-label="Имя персонажа">
+                <span v-for="line in characterNameLines" :key="line">{{ line }}</span>
+              </div>
             </aside>
             <section class="preview-info">
               <div class="preview-facts">
@@ -483,6 +487,13 @@ const characterAge = computed(() => {
   const match = /^(\d{4})-\d{2}-\d{2}$/.exec(form.birthDate)
   if (!match) return 0
   return Math.max(0, 1875 - Number(match[1]))
+})
+
+const characterNameLines = computed(() => {
+  const name = (form.rpName || form.nickname || 'Безымянный').trim().replace(/\s+/g, ' ')
+  const parts = name.split(' ')
+  if (parts.length <= 1) return [name]
+  return [parts[0], parts.slice(1).join(' ')]
 })
 
 const fillFromCurrentState = (authUser?: AuthUser | null) => {
@@ -886,7 +897,7 @@ const startGusarReaction = async () => {
   gusarDone.value = false
   gusarTypedText.value = ''
 
-  const text = `Хм. ${form.rpName || form.nickname} звучит достаточно убедительно. Я передал анкету модерации и буду ждать, как персонаж покажет себя на острове.`
+  const text = buildGusarReaction()
   for (const char of text) {
     gusarTypedText.value += char
     await new Promise((resolve) => window.setTimeout(resolve, 22))
@@ -894,6 +905,51 @@ const startGusarReaction = async () => {
   gusarTyping.value = false
   await new Promise((resolve) => window.setTimeout(resolve, 180))
   gusarDone.value = true
+}
+
+const trimSentence = (value: string, max = 150) => {
+  const clean = value.trim().replace(/\s+/g, ' ')
+  if (clean.length <= max) return clean
+  return `${clean.slice(0, max).trim()}...`
+}
+
+const findBioMotive = () => {
+  const bio = form.biography.toLowerCase()
+  const motives = [
+    { test: ['ад', 'преиспод', 'азраил'], text: 'В биографии чувствуется не просто трагедия, а почти богословская рана: ад, голод и долг перед чем-то старше обычной вины.' },
+    { test: ['голод', 'жрать', 'еда'], text: 'Тема голода повторяется слишком настойчиво, чтобы считать её украшением: это хорошая пружина для поведения персонажа.' },
+    { test: ['проклят', 'кара', 'грех'], text: 'Проклятие и вина у тебя не висят вывеской, а объясняют, почему персонаж может сорваться в самый неподходящий момент.' },
+    { test: ['охот', 'звер', 'твар'], text: 'Охота и звериный след дают ему понятный инстинкт: он не просто разговаривает, он выслеживает слабое место.' },
+    { test: ['остров', 'тюрьм'], text: 'Связь с островом уже есть, и это важно: он не падает в сюжет случайно, а входит туда с тяжёлым поводом.' }
+  ]
+  return motives.find((item) => item.test.some((word) => bio.includes(word)))?.text
+}
+
+const buildGusarReaction = () => {
+  const name = form.rpName || form.nickname || 'этот персонаж'
+  const facts = [
+    `${characterAge.value} лет`,
+    form.race,
+    form.gender,
+    `${form.heightCm} см`
+  ].filter(Boolean).join(', ')
+  const appearance = form.skinUrl
+    ? 'По приложенному облику видно, что внешность у персонажа не нейтральная: её можно читать как часть истории, а не как случайный костюм.'
+    : 'Внешность пока придётся держать в голове по описанию, поэтому модерации стоит внимательнее сверить её с биографией.'
+  const motive = findBioMotive() || 'В заявке есть рабочая внутренняя причина двигаться дальше, но я бы смотрел, не растворится ли она в первом же разговоре.'
+  const prison = form.prisonReason ? `Причина ссылки звучит так: «${trimSentence(form.prisonReason, 120)}». Это хороший крючок для острова, если игрок не забудет играть последствия.` : ''
+  const skills = form.skills ? `Навыки заявлены не пусто: ${trimSentence(form.skills, 130)}.` : ''
+  const plan = form.plan ? `План развития тоже намечен: ${trimSentence(form.plan, 130)}.` : ''
+
+  return [
+    `Хм. ${name}. ${facts ? `Запоминаю: ${facts}.` : 'Фактов пока маловато, но ядро персонажа видно.'}`,
+    appearance,
+    motive,
+    prison,
+    skills,
+    plan,
+    'Я передал анкету модерации. Если на острове он будет говорить и действовать так же плотно, как написан здесь, за ним будет интересно наблюдать.'
+  ].filter(Boolean).join(' ')
 }
 
 const rewriteApplication = () => {
@@ -998,8 +1054,27 @@ watch(
 }
 
 .identity-card {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
   display: grid;
   gap: 10px;
+}
+
+.identity-card > :not(.profile-skin-bg) {
+  position: relative;
+  z-index: 1;
+}
+
+.profile-skin-bg {
+  position: absolute;
+  z-index: 0;
+  right: -86px;
+  bottom: 8px;
+  width: 300px;
+  height: 430px;
+  min-height: 430px;
+  pointer-events: none;
 }
 
 .avatar-box {
@@ -1118,10 +1193,6 @@ h1 {
   border-radius: 999px;
   padding: 5px 8px;
   font-size: 12px;
-}
-
-.profile-skin {
-  min-height: 260px;
 }
 
 .theme-picker {
@@ -1362,26 +1433,48 @@ textarea {
 
 .preview-grid {
   display: grid;
-  grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.2fr);
+  grid-template-columns: minmax(340px, 0.95fr) minmax(0, 1.05fr);
   gap: 14px;
   min-height: 0;
 }
 
 .preview-skin {
   position: relative;
-  display: grid;
-  align-content: start;
-  gap: 10px;
+  min-height: clamp(440px, 58vh, 680px);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background:
+    linear-gradient(45deg, rgba(255, 255, 255, 0.035) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(255, 255, 255, 0.035) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(255, 255, 255, 0.035) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.035) 75%),
+    rgba(255, 255, 255, 0.025);
+  background-size: 32px 32px;
+  background-position: 0 0, 0 16px, 16px -16px, -16px 0;
 }
 
-.preview-skin strong {
-  justify-self: center;
-  margin-top: -72px;
+.preview-skin-bg {
+  position: absolute;
+  inset: -34px -18px -26px -18px;
+  min-height: calc(100% + 60px);
+  pointer-events: none;
+}
+
+.preview-character-name {
+  position: absolute;
   z-index: 1;
-  padding: 7px 12px;
-  border-radius: 8px;
-  background: rgba(8, 7, 10, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  top: 18px;
+  left: 18px;
+  display: grid;
+  gap: 1px;
+  max-width: min(260px, calc(100% - 36px));
+  color: rgba(255, 255, 255, 0.93);
+  font-size: clamp(28px, 4vw, 52px);
+  font-weight: 800;
+  line-height: 0.94;
+  text-shadow: 0 10px 28px rgba(0, 0, 0, 0.7);
+  overflow-wrap: anywhere;
 }
 
 .preview-info {
