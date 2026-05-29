@@ -17,7 +17,7 @@
       <span v-if="formattedDate">{{ formattedDate }}</span>
     </div>
     <h4>{{ title }}</h4>
-    <p class="discord-text">{{ intro }}</p>
+    <DiscordText class="discord-text compact-text" :text="intro" />
     <button class="primary" type="button" @click="openModal">Подробнее</button>
     <img v-if="imageUrl" class="media image" :src="imageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
     <div v-else class="media" :class="variant"></div>
@@ -50,7 +50,7 @@
                 <span v-for="tag in tags" :key="tag"># {{ tag }}</span>
               </div>
               <h3>{{ title }}</h3>
-              <p class="discord-text">{{ intro }}</p>
+              <DiscordText class="discord-text" :text="intro" />
               <a v-if="url" class="discord-link" :href="url" target="_blank" rel="noreferrer">Открыть в Discord</a>
             </div>
           </section>
@@ -107,6 +107,7 @@
 
 <script setup lang="ts">
 import fallbackAvatar from '~/assets/amy-logo.png'
+import DiscordText from '~/components/DiscordText.vue'
 
 const props = defineProps<{
   id?: string
@@ -247,7 +248,9 @@ const sendComment = async () => {
   border: 1px solid var(--stroke);
   background: var(--panel);
   display: grid;
+  grid-template-rows: 32px 18px 44px 84px 34px 140px 32px;
   gap: 10px;
+  min-height: 430px;
   transition: transform 0.2s ease, border-color 0.2s ease;
 }
 
@@ -261,12 +264,16 @@ const sendComment = async () => {
   justify-content: space-between;
   gap: 8px;
   align-items: center;
+  min-height: 32px;
+  overflow: hidden;
 }
 
 .tags {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+  max-height: 32px;
+  overflow: hidden;
 }
 
 .tags span {
@@ -283,6 +290,8 @@ const sendComment = async () => {
   gap: 8px;
   color: var(--muted);
   font-size: 12px;
+  min-height: 18px;
+  overflow: hidden;
 }
 
 .meta span + span::before {
@@ -328,6 +337,11 @@ const sendComment = async () => {
 h4 {
   margin: 0;
   font-size: 18px;
+  line-height: 1.22;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 p {
@@ -347,6 +361,7 @@ p {
   text-decoration: none;
   font-size: 13px;
   font-weight: 600;
+  align-self: start;
 }
 
 .media {
@@ -364,6 +379,7 @@ p {
 .comments {
   display: grid;
   gap: 8px;
+  align-self: end;
 }
 
 .comment-toggle {
@@ -493,8 +509,16 @@ p {
 }
 
 .discord-text {
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.compact-text {
+  min-height: 84px;
+  max-height: 84px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
 }
 
 .discord-link {

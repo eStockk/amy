@@ -100,6 +100,13 @@ func (h *DiscordAuthHandler) SubmitRPApplication(w http.ResponseWriter, r *http.
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
 
+	skinURL, err := h.persistSkinURL(ctx, payload.SkinURL)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "failed to copy skin")
+		return
+	}
+	payload.SkinURL = skinURL
+
 	if hasAccepted, err := h.hasAcceptedApplication(ctx, user.DiscordID); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to check current applications")
 		return
@@ -409,6 +416,67 @@ func (h *DiscordAuthHandler) UploadRPSkin(w http.ResponseWriter, r *http.Request
 		"path":   path,
 		"url":    absolutePublicURL(r, path),
 	})
+}
+
+func (h *DiscordAuthHandler) persistSkinURL(ctx context.Context, rawURL string) (string, error) {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" || isInternalSkinPath(rawURL) {
+		return rawURL, nil
+	}
+	if !isSafeSkinURL(rawURL) {
+		return rawURL, nil
+	}
+
+	storageDir := strings.TrimSpace(h.skinStorageDir)
+	if storageDir == "" {
+		return rawURL, nil
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", "amy-world-skin-import/1.0")
+
+	resp, err := h.httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return "", fmt.Errorf("skin import failed: status=%d", resp.StatusCode)
+	}
+
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxSkinUploadBytes+1))
+	if err != nil {
+		return "", err
+	}
+	if len(raw) == 0 || len(raw) > maxSkinUploadBytes {
+		return "", fmt.Errorf("skin import has invalid size")
+	}
+
+	filename := ""
+	if parsed, err := url.Parse(rawURL); err == nil {
+		filename = filepath.Base(parsed.Path)
+	}
+	contentType := strings.ToLower(strings.TrimSpace(strings.Split(resp.Header.Get("Content-Type"), ";")[0]))
+	if contentType == "" || contentType == "application/octet-stream" {
+		contentType = http.DetectContentType(raw)
+	}
+	ext := skinExtension(contentType, filename)
+	if ext == "" {
+		return "", fmt.Errorf("skin import is not an allowed image")
+	}
+
+	if err := os.MkdirAll(storageDir, 0o750); err != nil {
+		return "", err
+	}
+	fileName := randomHex(16) + ext
+	target := filepath.Join(storageDir, fileName)
+	if err := os.WriteFile(target, raw, 0o640); err != nil {
+		return "", err
+	}
+	return "/api/uploads/skins/" + fileName, nil
 }
 
 func (h *DiscordAuthHandler) SkinFileServer() http.Handler {
@@ -1115,6 +1183,33 @@ func (h *DiscordAuthHandler) syncRPDiscordMessages(ctx context.Context) error {
 		if err := h.updateRPApplicationDiscordMessage(*app); err != nil {
 			return err
 		}
+	}
+
+	return rows.Err()
+}
+
+func (h *DiscordAuthHandler) syncExternalRPSkins(ctx context.Context) error {
+	if strings.TrimSpace(h.skinStorageDir) == "" {
+		return nil
+	}
+
+	rows, err := h.db.QueryContext(ctx, rpApplicationSelectSQL+` WHERE skin_url LIKE 'https://%' AND status IN ('pending', 'call', 'accepted', 'approved')`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		app, err := scanRPApplication(rows)
+		if err != nil {
+			return err
+		}
+		localPath, err := h.persistSkinURL(ctx, app.SkinURL)
+		if err != nil || strings.TrimSpace(localPath) == "" || localPath == app.SkinURL {
+			continue
+		}
+		_, _ = h.db.ExecContext(ctx, `UPDATE rp_applications SET skin_url = $1, updated_at = $2 WHERE id = $3`, localPath, time.Now().UTC(), app.ID)
+		app.SkinURL = localPath
 	}
 
 	return rows.Err()

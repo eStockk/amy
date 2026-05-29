@@ -515,7 +515,7 @@ func titleAndIntro(text string) (string, string) {
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line != "" {
-			title = line
+			title = stripDiscordHeadingMarker(line)
 			break
 		}
 	}
@@ -537,10 +537,20 @@ func firstNewsLine(text string) string {
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line != "" {
-			return truncateRunes(line, 96)
+			return truncateRunes(stripDiscordHeadingMarker(line), 96)
 		}
 	}
 	return "Новость Amy"
+}
+
+func stripDiscordHeadingMarker(line string) string {
+	line = strings.TrimSpace(line)
+	for _, marker := range []string{"### ", "## ", "# "} {
+		if strings.HasPrefix(line, marker) {
+			return strings.TrimSpace(strings.TrimPrefix(line, marker))
+		}
+	}
+	return line
 }
 
 func discordMessageText(message discordNewsMessage) (string, string) {

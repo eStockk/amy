@@ -892,5 +892,8 @@ func (h *DiscordAuthHandler) isRPModerator(discordID string) bool {
 }
 
 func (h *DiscordAuthHandler) RunMigrations(ctx context.Context) error {
+	if err := h.syncExternalRPSkins(ctx); err != nil {
+		return err
+	}
 	return h.syncRPDiscordMessages(ctx)
 }
