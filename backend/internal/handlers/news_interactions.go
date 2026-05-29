@@ -11,11 +11,13 @@ import (
 )
 
 type newsCommentOut struct {
-	ID        int64     `json:"id"`
-	NewsID    string    `json:"newsId"`
-	Author    string    `json:"author"`
-	Message   string    `json:"message"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID           int64     `json:"id"`
+	NewsID       string    `json:"newsId"`
+	Author       string    `json:"author"`
+	AuthorID     string    `json:"authorId,omitempty"`
+	AuthorAvatar string    `json:"authorAvatar,omitempty"`
+	Message      string    `json:"message"`
+	CreatedAt    time.Time `json:"createdAt"`
 }
 
 func (h *NewsHandler) Like(w http.ResponseWriter, r *http.Request) {
@@ -84,7 +86,16 @@ func (h *NewsHandler) listComments(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	rows, err := h.db.QueryContext(ctx, `SELECT id, news_id, author_name, message, created_at FROM news_comments WHERE news_id = $1 ORDER BY created_at ASC LIMIT 80`, newsID)
+	rows, err := h.db.QueryContext(
+		ctx,
+		`SELECT c.id, c.news_id, c.author_name, c.discord_id, COALESCE(u.avatar, ''), c.message, c.created_at
+		 FROM news_comments c
+		 LEFT JOIN discord_users u ON u.discord_id = c.discord_id
+		 WHERE c.news_id = $1
+		 ORDER BY c.created_at ASC
+		 LIMIT 80`,
+		newsID,
+	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load comments")
 		return
@@ -93,10 +104,12 @@ func (h *NewsHandler) listComments(w http.ResponseWriter, r *http.Request) {
 	items := make([]newsCommentOut, 0)
 	for rows.Next() {
 		var item newsCommentOut
-		if err := rows.Scan(&item.ID, &item.NewsID, &item.Author, &item.Message, &item.CreatedAt); err != nil {
+		var avatarHash string
+		if err := rows.Scan(&item.ID, &item.NewsID, &item.Author, &item.AuthorID, &avatarHash, &item.Message, &item.CreatedAt); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to read comments")
 			return
 		}
+		item.AuthorAvatar = avatarURLFor(item.AuthorID, avatarHash)
 		items = append(items, item)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"comments": items})
@@ -138,19 +151,24 @@ func (h *NewsHandler) createComment(w http.ResponseWriter, r *http.Request) {
 		author = displayNameFor(*user)
 	}
 	var out newsCommentOut
+	var avatarHash string
 	err = h.db.QueryRowContext(
 		ctx,
 		`INSERT INTO news_comments (news_id, discord_id, author_name, message)
 		 VALUES ($1, $2, $3, $4)
-		 RETURNING id, news_id, author_name, message, created_at`,
+		 RETURNING id, news_id, author_name, discord_id, message, created_at`,
 		newsID,
 		discordID,
 		author,
 		message,
-	).Scan(&out.ID, &out.NewsID, &out.Author, &out.Message, &out.CreatedAt)
+	).Scan(&out.ID, &out.NewsID, &out.Author, &out.AuthorID, &out.Message, &out.CreatedAt)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to save comment")
 		return
 	}
+	if user != nil {
+		avatarHash = user.Avatar
+	}
+	out.AuthorAvatar = avatarURLFor(out.AuthorID, avatarHash)
 	writeJSON(w, http.StatusOK, map[string]any{"comment": out})
 }

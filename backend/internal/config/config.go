@@ -23,6 +23,7 @@ type Config struct {
 	SupportPushSubject     string
 	SupportStorageDir      string
 	SkinStorageDir         string
+	MediaCacheDir          string
 	TenorAPIKey            string
 }
 
@@ -48,6 +49,7 @@ func Load() Config {
 		SupportPushSubject:     getEnv("SUPPORT_PUSH_SUBJECT", "mailto:support@amyworld.ru"),
 		SupportStorageDir:      getEnv("SUPPORT_STORAGE_DIR", "data/support"),
 		SkinStorageDir:         getEnv("SKIN_STORAGE_DIR", "data/skins"),
+		MediaCacheDir:          getEnv("MEDIA_CACHE_DIR", "data/media-cache"),
 		TenorAPIKey:            getEnv("TENOR_API_KEY", ""),
 	}
 }

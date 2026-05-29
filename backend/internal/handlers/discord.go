@@ -101,6 +101,11 @@ type publicProfile struct {
 	Race                   string              `json:"race,omitempty"`
 	Gender                 string              `json:"gender,omitempty"`
 	BirthDate              string              `json:"birthDate,omitempty"`
+	HeightCm               int                 `json:"heightCm,omitempty"`
+	Skills                 string              `json:"skills,omitempty"`
+	Plan                   string              `json:"plan,omitempty"`
+	Biography              string              `json:"biography,omitempty"`
+	PrisonReason           string              `json:"prisonReason,omitempty"`
 	SkinURL                string              `json:"skinUrl,omitempty"`
 	DiscordRoles           []publicDiscordRole `json:"discordRoles,omitempty"`
 	ThemeRoleID            string              `json:"themeRoleId,omitempty"`
@@ -571,7 +576,7 @@ func avatarURLFor(discordID, avatar string) string {
 	if avatar == "" || discordID == "" {
 		return ""
 	}
-	return "https://cdn.discordapp.com/avatars/" + discordID + "/" + avatar + ".png?size=256"
+	return proxiedMediaURL("https://cdn.discordapp.com/avatars/" + discordID + "/" + avatar + ".png?size=256")
 }
 
 func (h *DiscordAuthHandler) isAmyDiscordMember(ctx context.Context, discordID string) (bool, error) {
@@ -830,7 +835,12 @@ func applyRPApplicationToProfile(profile *publicProfile, app *rpApplicationDoc) 
 	profile.Race = strings.TrimSpace(app.Race)
 	profile.Gender = strings.TrimSpace(app.Gender)
 	profile.BirthDate = strings.TrimSpace(app.BirthDate)
-	profile.SkinURL = strings.TrimSpace(app.SkinURL)
+	profile.HeightCm = app.HeightCm
+	profile.Skills = strings.TrimSpace(app.Skills)
+	profile.Plan = strings.TrimSpace(app.Plan)
+	profile.Biography = strings.TrimSpace(app.Biography)
+	profile.PrisonReason = strings.TrimSpace(app.PrisonReason)
+	profile.SkinURL = proxiedMediaURL(strings.TrimSpace(app.SkinURL))
 	if profile.RPName != "" {
 		parts := strings.Fields(profile.RPName)
 		if len(parts) > 0 {

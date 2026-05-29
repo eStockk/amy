@@ -17,7 +17,7 @@
       <span v-if="formattedDate">{{ formattedDate }}</span>
     </div>
     <h4>{{ title }}</h4>
-    <p>{{ intro }}</p>
+    <p class="discord-text">{{ intro }}</p>
     <button class="primary" type="button" @click="openModal">Подробнее</button>
     <img v-if="imageUrl" class="media image" :src="imageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
     <div v-else class="media" :class="variant"></div>
@@ -42,11 +42,6 @@
     <Teleport to="body">
       <div v-if="modalOpen" class="modal-backdrop" @click.self="closeModal">
         <article class="post-modal" role="dialog" aria-modal="true" aria-label="Новость">
-          <button class="modal-close" type="button" aria-label="Закрыть" @click="closeModal">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="m6 6 12 12M18 6 6 18" />
-            </svg>
-          </button>
           <section class="modal-main">
             <img v-if="imageUrl" class="modal-image" :src="imageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
             <div v-else class="modal-placeholder" :class="variant"></div>
@@ -55,7 +50,7 @@
                 <span v-for="tag in tags" :key="tag"># {{ tag }}</span>
               </div>
               <h3>{{ title }}</h3>
-              <p>{{ intro }}</p>
+              <p class="discord-text">{{ intro }}</p>
               <a v-if="url" class="discord-link" :href="url" target="_blank" rel="noreferrer">Открыть в Discord</a>
             </div>
           </section>
@@ -86,8 +81,15 @@
             <div class="modal-comments">
               <p v-if="commentsPending" class="comment-muted">Загружаем...</p>
               <p v-else-if="!comments.length" class="comment-muted">Комментариев пока нет.</p>
-              <article v-for="comment in comments" :key="comment.id" class="comment">
-                <strong>{{ comment.author }}</strong>
+              <article v-for="comment in comments" :key="comment.id" class="comment rich-comment">
+                <NuxtLink v-if="comment.authorId" class="comment-author" :to="`/u/${comment.authorId}`">
+                  <img :src="comment.authorAvatar || fallbackAvatar" alt="" />
+                  <strong>{{ comment.author }}</strong>
+                </NuxtLink>
+                <div v-else class="comment-author">
+                  <img :src="comment.authorAvatar || fallbackAvatar" alt="" />
+                  <strong>{{ comment.author }}</strong>
+                </div>
                 <span>{{ comment.message }}</span>
               </article>
             </div>
@@ -127,6 +129,8 @@ const props = defineProps<{
 type NewsComment = {
   id: number
   author: string
+  authorId?: string
+  authorAvatar?: string
   message: string
   createdAt: string
 }
@@ -446,21 +450,6 @@ p {
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
 }
 
-.modal-close {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 2;
-  width: 34px;
-  height: 34px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.36);
-  color: var(--text);
-  cursor: pointer;
-}
-
-.modal-close svg,
 .comment-stat svg {
   width: 18px;
   height: 18px;
@@ -501,6 +490,11 @@ p {
 .modal-copy h3 {
   margin: 0;
   font-size: 24px;
+}
+
+.discord-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .discord-link {
@@ -559,6 +553,28 @@ p {
   overflow: auto;
   min-height: 160px;
   padding-right: 4px;
+}
+
+.rich-comment {
+  gap: 6px;
+}
+
+.comment-author {
+  width: max-content;
+  max-width: 100%;
+  display: inline-grid;
+  grid-template-columns: 28px minmax(0, max-content);
+  gap: 8px;
+  align-items: center;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.comment-author img {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  object-fit: cover;
 }
 
 @media (max-width: 820px) {

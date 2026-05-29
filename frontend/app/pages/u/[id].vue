@@ -66,6 +66,13 @@
               </svg>
               Чат игроков
             </NuxtLink>
+            <button v-if="profile.hasAcceptedApplication" class="ghost chat-link" type="button" @click="applicationDetailsOpen = true">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8 4h8l3 3v13H5V4h3Z" />
+                <path d="M16 4v4h4M8 12h8M8 15h8M8 18h5" />
+              </svg>
+              Анкета персонажа
+            </button>
             <button v-if="isOwner" class="ghost danger" type="button" @click="logoutAndBack">Выйти</button>
           </div>
         </article>
@@ -286,6 +293,54 @@
         </section>
       </div>
     </Teleport>
+
+    <Teleport to="body">
+      <div v-if="profile?.hasAcceptedApplication && applicationDetailsOpen" class="modal-backdrop" @click.self="applicationDetailsOpen = false">
+        <section class="panel modal-window" role="dialog" aria-modal="true" aria-label="Анкета персонажа">
+          <header class="modal-head">
+            <div>
+              <p class="eyebrow">RP-заявка</p>
+              <h3>Анкета персонажа</h3>
+            </div>
+            <button class="ghost" type="button" @click="applicationDetailsOpen = false">Закрыть</button>
+          </header>
+
+          <div class="preview-grid details-preview">
+            <aside class="preview-skin">
+              <MinecraftSkinViewer
+                v-if="profile.skinUrl"
+                class="preview-skin-bg"
+                :skin-url="profile.skinUrl"
+                background
+                :zoom="0.78"
+              />
+            </aside>
+            <div class="preview-character-name" aria-label="Имя персонажа">
+              <span v-for="line in profileCharacterNameLines" :key="line">{{ line }}</span>
+            </div>
+            <section class="preview-info">
+              <div class="preview-facts">
+                <div><span>Возраст</span><strong>{{ profileCharacterAge }}</strong></div>
+                <div><span>Дата рождения</span><strong>{{ profile.birthDate ? formatDate(profile.birthDate, true) : 'Не указана' }}</strong></div>
+                <div><span>Раса</span><strong>{{ profile.race || 'Не указана' }}</strong></div>
+                <div><span>Пол</span><strong>{{ profile.gender || 'Не указан' }}</strong></div>
+                <div><span>Рост</span><strong>{{ profile.heightCm ? `${profile.heightCm} см` : 'Не указан' }}</strong></div>
+                <div><span>Ник в игре</span><strong>{{ profile.minecraftNickname || 'Не указан' }}</strong></div>
+                <div class="wide"><span>Причина ссылки</span><strong>{{ profile.prisonReason || 'Не указана' }}</strong></div>
+              </div>
+              <div class="bio-preview">
+                <h4>Биография</h4>
+                <p>{{ profile.biography || 'Биография не указана.' }}</p>
+                <h4 v-if="profile.skills">Навыки</h4>
+                <p v-if="profile.skills">{{ profile.skills }}</p>
+                <h4 v-if="profile.plan">План развития</h4>
+                <p v-if="profile.plan">{{ profile.plan }}</p>
+              </div>
+            </section>
+          </div>
+        </section>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -309,6 +364,11 @@ type PublicProfile = {
   race?: string
   gender?: string
   birthDate?: string
+  heightCm?: number
+  skills?: string
+  plan?: string
+  biography?: string
+  prisonReason?: string
   skinUrl?: string
   discordRoles?: Array<{
     id: string
@@ -362,6 +422,7 @@ const deleteError = ref(false)
 const rpModalOpen = ref(false)
 const previewOpen = ref(false)
 const previewWarningOpen = ref(false)
+const applicationDetailsOpen = ref(false)
 const gusarTypingStarted = ref(false)
 const gusarTyping = ref(false)
 const gusarDone = ref(false)
@@ -494,6 +555,20 @@ const characterNameLines = computed(() => {
   const parts = name.split(' ')
   if (parts.length <= 1) return [name]
   return [parts[0], parts.slice(1).join(' ')]
+})
+
+const profileCharacterNameLines = computed(() => {
+  const name = (fullRPName.value === 'Не указан' ? profile.value?.minecraftNickname : fullRPName.value) || 'Безымянный'
+  const parts = name.trim().replace(/\s+/g, ' ').split(' ')
+  if (parts.length <= 1) return [name]
+  return [parts[0], parts.slice(1).join(' ')]
+})
+
+const profileCharacterAge = computed(() => {
+  if (!profile.value?.birthDate) return 'Не указан'
+  const birthYear = new Date(profile.value.birthDate).getFullYear()
+  if (Number.isNaN(birthYear)) return 'Не указан'
+  return `${Math.max(0, 1875 - birthYear)} лет`
 })
 
 const fillFromCurrentState = (authUser?: AuthUser | null) => {
@@ -1497,6 +1572,10 @@ textarea {
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.045);
+}
+
+.preview-facts .wide {
+  grid-column: 1 / -1;
 }
 
 .preview-facts span {

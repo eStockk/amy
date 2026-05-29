@@ -506,7 +506,7 @@ func (h *DiscordAuthHandler) latestApplicationSummary(ctx context.Context, disco
 		HeightCm:     doc.HeightCm,
 		BirthDate:    doc.BirthDate,
 		PrisonReason: doc.PrisonReason,
-		SkinURL:      doc.SkinURL,
+		SkinURL:      proxiedMediaURL(doc.SkinURL),
 		CreatedAt:    &doc.CreatedAt,
 		UpdatedAt:    &doc.UpdatedAt,
 		ModeratedAt:  doc.ModeratedAt,

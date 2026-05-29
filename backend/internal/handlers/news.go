@@ -388,7 +388,7 @@ func (h *NewsHandler) discordNewsItem(message discordNewsMessage, channelID, sou
 	}
 	title, text := discordMessageText(message)
 	if title == "" {
-		title, text = titleAndIntro(text)
+		title = firstNewsLine(text)
 	}
 	if title == "Пост игрока" || title == "Новость Amy" {
 		title = "Пост игрока"
@@ -409,11 +409,11 @@ func (h *NewsHandler) discordNewsItem(message discordNewsMessage, channelID, sou
 	return models.News{
 		ID:           "discord:" + category + ":" + message.ID,
 		Title:        truncateRunes(title, 96),
-		Intro:        truncateRunes(text, 220),
+		Intro:        text,
 		Tags:         []string{source},
 		Source:       source,
 		URL:          h.discordMessageURL(channelID, message.ID),
-		ImageURL:     imageURL,
+		ImageURL:     proxiedMediaURL(imageURL),
 		Category:     category,
 		Author:       author,
 		AuthorID:     strings.TrimSpace(message.Author.ID),
@@ -530,6 +530,17 @@ func titleAndIntro(text string) (string, string) {
 	}
 
 	return truncateRunes(title, 96), truncateRunes(intro, 220)
+}
+
+func firstNewsLine(text string) string {
+	lines := strings.Split(strings.TrimSpace(text), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			return truncateRunes(line, 96)
+		}
+	}
+	return "Новость Amy"
 }
 
 func discordMessageText(message discordNewsMessage) (string, string) {
