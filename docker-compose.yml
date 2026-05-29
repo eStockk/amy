@@ -228,6 +228,13 @@ services:
     environment:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+      BOT_METRICS_PORT: 8091
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/metrics', timeout=3).read(1)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.15.0
