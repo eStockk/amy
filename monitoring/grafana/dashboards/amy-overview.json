@@ -2094,7 +2094,7 @@
       },
       "id": 33,
       "panels": [],
-      "title": "?????: Discord-???",
+      "title": "Гусар: Discord-бот",
       "type": "row"
     },
     {
@@ -2156,7 +2156,7 @@
           "refId": "A"
         }
       ],
-      "title": "????? online",
+      "title": "Гусар online",
       "type": "stat"
     },
     {
@@ -2218,7 +2218,7 @@
           "refId": "A"
         }
       ],
-      "title": "Discord latency",
+      "title": "Задержка Discord",
       "type": "stat"
     },
     {
@@ -2280,7 +2280,7 @@
           "refId": "A"
         }
       ],
-      "title": "???????? Discord",
+      "title": "Серверов Discord",
       "type": "stat"
     },
     {
@@ -2342,7 +2342,7 @@
           "refId": "A"
         }
       ],
-      "title": "????????? ?? ???",
+      "title": "Сообщений за час",
       "type": "stat"
     },
     {
@@ -2404,7 +2404,7 @@
           "refId": "A"
         }
       ],
-      "title": "?????????? ?? ???",
+      "title": "Упоминаний за час",
       "type": "stat"
     },
     {
@@ -2466,7 +2466,7 @@
           "refId": "A"
         }
       ],
-      "title": "?????? DeepSeek ?? ???",
+      "title": "Ошибки DeepSeek за час",
       "type": "stat"
     },
     {
@@ -2552,21 +2552,21 @@
       "targets": [
         {
           "expr": "rate(amy_gusar_messages_total{job=\"amy-gusar\"}[5m])",
-          "legendFormat": "?????????",
+          "legendFormat": "сообщения",
           "refId": "A"
         },
         {
           "expr": "rate(amy_gusar_mentions_total{job=\"amy-gusar\"}[5m])",
-          "legendFormat": "??????????",
+          "legendFormat": "упоминания",
           "refId": "B"
         },
         {
           "expr": "rate(amy_gusar_replies_total{job=\"amy-gusar\",result=\"success\"}[5m])",
-          "legendFormat": "??????",
+          "legendFormat": "ответы",
           "refId": "C"
         }
       ],
-      "title": "?????: ?????????? ? ??????",
+      "title": "Гусар: сообщения и ответы",
       "type": "timeseries"
     },
     {
@@ -2652,21 +2652,21 @@
       "targets": [
         {
           "expr": "rate(amy_gusar_deepseek_requests_total{job=\"amy-gusar\",result=\"success\"}[5m])",
-          "legendFormat": "?????",
+          "legendFormat": "успех",
           "refId": "A"
         },
         {
           "expr": "rate(amy_gusar_deepseek_requests_total{job=\"amy-gusar\",result=\"error\"}[5m])",
-          "legendFormat": "??????",
+          "legendFormat": "ошибки",
           "refId": "B"
         },
         {
           "expr": "histogram_quantile(0.95, rate(amy_gusar_deepseek_request_duration_seconds_bucket{job=\"amy-gusar\"}[5m]))",
-          "legendFormat": "p95 latency",
+          "legendFormat": "p95 задержка",
           "refId": "C"
         }
       ],
-      "title": "?????: DeepSeek",
+      "title": "Гусар: DeepSeek",
       "type": "timeseries"
     },
     {
@@ -2766,7 +2766,7 @@
           "refId": "C"
         }
       ],
-      "title": "?????: ???????? ??????????",
+      "title": "Гусар: ресурсы контейнера",
       "type": "timeseries"
     }
   ],
