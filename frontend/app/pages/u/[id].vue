@@ -15,9 +15,9 @@
       <aside class="left-col">
         <article class="panel identity-card">
           <MinecraftSkinViewer
-            v-if="profile.hasAcceptedApplication && profile.skinUrl"
+            v-if="profile.hasAcceptedApplication && profileDisplaySkinUrl"
             class="profile-skin-bg"
-            :skin-url="profile.skinUrl"
+            :skin-url="profileDisplaySkinUrl"
             compact
             background
             :zoom="1.08"
@@ -308,9 +308,9 @@
           <div class="preview-grid details-preview">
             <aside class="preview-skin">
               <MinecraftSkinViewer
-                v-if="profile.skinUrl"
+                v-if="profileDisplaySkinUrl"
                 class="preview-skin-bg"
-                :skin-url="profile.skinUrl"
+                :skin-url="profileDisplaySkinUrl"
                 background
                 :zoom="0.78"
               />
@@ -408,6 +408,14 @@ const playerPosts = ref<NewsItem[]>([])
 const postsPending = ref(false)
 const profileId = computed(() => String(route.params.id || '').trim())
 const isOwner = computed(() => Boolean(authenticated.value && user.value?.id === profile.value?.id))
+const philyaWerewolfSkinUrl = '/api/uploads/skins/phil_werewolf.png'
+const philyaSkinVariant = ref<'original' | 'werewolf'>('original')
+const isPhilyaProfile = computed(() => (profile.value?.minecraftNickname || '').toLowerCase() === 'philya_aotbook')
+const profileDisplaySkinUrl = computed(() => {
+  if (!profile.value?.skinUrl) return ''
+  if (isPhilyaProfile.value && philyaSkinVariant.value === 'werewolf') return philyaWerewolfSkinUrl
+  return profile.value.skinUrl
+})
 
 const applicationSummary = computed(() => (isOwner.value ? user.value?.rpApplication : undefined))
 
@@ -697,6 +705,7 @@ const loadProfile = async () => {
       fillFromCurrentState(user.value)
       loadDraft()
     }
+    philyaSkinVariant.value = Math.random() < 0.5 ? 'werewolf' : 'original'
 
     await loadPlayerPosts()
     await maybeOpenApplicationFromQuery()
