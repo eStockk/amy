@@ -118,6 +118,11 @@
           <p v-if="submitMessage" class="status" :class="{ error: submitError }">{{ submitMessage }}</p>
         </section>
 
+        <section v-if="showGodRpBadge" class="panel god-rp-badge" aria-label="Статус участия в RP">
+          <p class="eyebrow">Статус персонажа</p>
+          <h3>Не участвует в РП</h3>
+        </section>
+
         <section v-if="profile.hasAcceptedApplication" class="panel posts-card">
           <div class="section-head">
             <h3>Посты игрока</h3>
@@ -408,6 +413,23 @@ const playerPosts = ref<NewsItem[]>([])
 const postsPending = ref(false)
 const profileId = computed(() => String(route.params.id || '').trim())
 const isOwner = computed(() => Boolean(authenticated.value && user.value?.id === profile.value?.id))
+const normalizedProfileAliases = computed(() => {
+  if (!profile.value) return []
+  return [
+    profile.value.minecraftNickname,
+    profile.value.username,
+    profile.value.displayName,
+    profile.value.rpName
+  ].map((value) => (value || '').trim().toLowerCase()).filter(Boolean)
+})
+const isGodProfile = computed(() => normalizedProfileAliases.value.some((value) => [
+  'g0d666',
+  'god666',
+  'supersus_god',
+  'super sus',
+  'год'
+].includes(value)))
+const showGodRpBadge = computed(() => isGodProfile.value && !isOwner.value)
 const philyaWerewolfSkinUrl = '/api/uploads/skins/phil_werewolf.png'
 const philyaSkinVariant = ref<'original' | 'werewolf'>('original')
 const isPhilyaProfile = computed(() => (profile.value?.minecraftNickname || '').toLowerCase() === 'philya_aotbook')
@@ -1313,6 +1335,24 @@ h1 {
   display: grid;
   gap: 12px;
   padding: 14px;
+}
+
+.god-rp-badge {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border-color: rgba(255, 210, 91, 0.46);
+  background:
+    linear-gradient(135deg, rgba(255, 210, 91, 0.18), rgba(228, 94, 56, 0.08) 42%, rgba(12, 11, 14, 0.96)),
+    linear-gradient(160deg, rgba(22, 16, 15, 0.96), rgba(12, 11, 14, 0.98));
+  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 210, 91, 0.08);
+}
+
+.god-rp-badge h3 {
+  color: #ffe06d;
+  font-size: clamp(22px, 3vw, 34px);
+  line-height: 1;
+  text-transform: uppercase;
 }
 
 .posts-grid {

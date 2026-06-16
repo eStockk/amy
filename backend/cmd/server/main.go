@@ -55,6 +55,7 @@ func main() {
 	supportHandler := handlers.NewSupportHandler(postgres, cfg.DiscordTicketWebhook, cfg.FrontendURL, cfg.VAPIDPublicKey, cfg.VAPIDPrivateKey, cfg.SupportPushSubject, cfg.SupportStorageDir)
 	discordMemberSync := handlers.NewDiscordMemberSync(postgres, cfg.DiscordBotToken, cfg.DiscordGuildID, cfg.DiscordTicketChannelID, supportHandler.NotifyTicketReply)
 	serverStatusHandler := handlers.NewServerStatusHandler(cfg.MinecraftServerAddr)
+	skinsManifestHandler := handlers.NewSkinsManifestHandler(postgres)
 	discordHandler := handlers.NewDiscordAuthHandler(
 		postgres,
 		cfg.DiscordClientID,
@@ -88,6 +89,7 @@ func main() {
 	mux.HandleFunc("/api/community/chat", communityChatHandler.Handle)
 	mux.HandleFunc("/api/tenor/search", tenorHandler.Search)
 	mux.HandleFunc("/api/server/status", serverStatusHandler.Handle)
+	mux.HandleFunc("/api/skins/manifest", skinsManifestHandler.Handle)
 	mux.HandleFunc("/api/auth/discord/start", discordHandler.Start)
 	mux.HandleFunc("/api/auth/discord/callback", discordHandler.Callback)
 	mux.HandleFunc("/api/auth/me", discordHandler.Me)

@@ -12,3 +12,6 @@ frontend/dist/
 # General
 .env
 .DS_Store
+
+#docs
+docs/
