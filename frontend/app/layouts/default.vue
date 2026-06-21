@@ -7,6 +7,7 @@
         <slot />
       </main>
       <BaseFooter v-if="showFooter" />
+      <RPApplicationPrompt />
     </div>
   </div>
 </template>
@@ -15,12 +16,12 @@
 import BaseSidebar from '~/components/BaseSidebar.vue'
 import BaseFooter from '~/components/BaseFooter.vue'
 import TopBar from '~/components/TopBar.vue'
+import RPApplicationPrompt from '~/components/RPApplicationPrompt.vue'
 import { useAuth } from '~/composables/useAuth'
 
 const config = useRuntimeConfig()
 const route = useRoute()
-const router = useRouter()
-const { authenticated, user } = useAuth()
+const { authenticated } = useAuth()
 const showFooter = computed(() => !route.path.startsWith('/u/'))
 
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null
@@ -62,16 +63,6 @@ const handlePageHide = () => {
   void pingPresence(false)
 }
 
-const consumePostLoginAction = async () => {
-  if (!import.meta.client || !authenticated.value || !user.value?.id) return
-
-  const action = sessionStorage.getItem('amy:post-login-action')
-  if (action !== 'rp-application') return
-
-  sessionStorage.removeItem('amy:post-login-action')
-  await router.push(`/u/${user.value.id}?apply=1`)
-}
-
 onMounted(() => {
   stopAuthWatch = watch(
     authenticated,
@@ -79,7 +70,6 @@ onMounted(() => {
       if (value) {
         startHeartbeat()
         void pingPresence(isTabActive())
-        void consumePostLoginAction()
         return
       }
       stopHeartbeat()
@@ -90,13 +80,6 @@ onMounted(() => {
   document.addEventListener('visibilitychange', handleVisibility)
   window.addEventListener('pagehide', handlePageHide)
 })
-
-watch(
-  () => user.value?.id,
-  () => {
-    void consumePostLoginAction()
-  }
-)
 
 onBeforeUnmount(() => {
   stopHeartbeat()
