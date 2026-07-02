@@ -36,10 +36,6 @@
           <span class="icon"><AppIcon name="rules" /></span>
           <span class="label">Правила</span>
         </NuxtLink>
-        <NuxtLink class="nav-link" to="/shop" @click="close">
-          <span class="icon"><AppIcon name="shop" /></span>
-          <span class="label">Магазин</span>
-        </NuxtLink>
         <NuxtLink class="nav-link" to="/faq" @click="close">
           <span class="icon"><AppIcon name="faq" /></span>
           <span class="label">F.A.Q</span>
